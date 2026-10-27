@@ -60,3 +60,10 @@
 - 개발 서버: `npm run dev` → http://localhost:3000
 - 시연(빠른 실행): `npm run build` 후 `npm run start` → http://localhost:3000 (코드를 고치면 다시 build)
 - 공용 UI: 툴팁 `components/hint.tsx`, 알림 `sonner`의 `toast`, 제목 `components/page-header.tsx`, 로딩 `components/page-skeletons.tsx`
+
+## 깃허브 자동 커밋·푸시
+
+- 저장소: https://github.com/hhyeem33-hub/thesis-app (공개), 기본 브랜치 `main`.
+- **규칙: 코드를 고치는 작업을 마칠 때마다 커밋하고 푸시한다.** 커밋 메시지는 무엇을 바꿨는지 쉬운 한국어로 쓴다.
+- 자동화: `.claude/settings.json`의 Stop 훅이 `.claude/hooks/auto-commit.sh`를 실행해, 응답이 끝날 때 남은 변경을 자동으로 커밋·푸시한다.
+- 올리면 안 되는 것은 `.gitignore`로 막는다: `node_modules`, `.next`, `*.zip`, `data/*.json`(내 컴퓨터 경로), `연구계획서.txt.txt`(개인 자료), `.env*`·키 파일 등 비밀 정보. 새 비밀 정보나 개인 자료 파일이 생기면 커밋 전에 `.gitignore`에 먼저 추가한다.
