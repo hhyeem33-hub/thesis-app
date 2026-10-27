@@ -1,0 +1,59 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# 앱 데이터 (내 컴퓨터 경로와 프로젝트 목록)
+/data/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# 압축 파일
+*.zip
+
+# 앱 데이터 json (내 컴퓨터 경로가 들어 있음)
+/data/*.json
+
+# 개인 연구 자료
+연구계획서.txt.txt
+
+# 비밀 정보 (API 키 등)
+*.key
+secrets.*
+credentials*.json
+.claude/settings.local.json
