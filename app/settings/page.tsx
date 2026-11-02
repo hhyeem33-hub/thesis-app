@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { SettingsSkeleton } from "@/components/page-skeletons";
 import { SettingsForm } from "@/components/settings-form";
 import { getAiKeyStatus } from "@/lib/ai";
+import { ONLINE } from "@/lib/db";
 import { getSettings } from "@/lib/store";
 
 export default function SettingsPage() {
@@ -26,7 +27,7 @@ async function SettingsContent() {
   return (
     <div className="flex flex-col gap-4">
       <SettingsForm initial={await getSettings()} />
-      <AiSettingsCard status={await getAiKeyStatus()} onVercel={!!process.env.VERCEL} />
+      <AiSettingsCard status={await getAiKeyStatus()} onVercel={ONLINE} />
     </div>
   );
 }

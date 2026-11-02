@@ -4,8 +4,11 @@ import type { FolderStatus, Project } from "./types";
 // ⚠️ 슈파베이스 비밀 키(service role)는 서버에서만 쓴다. 브라우저로 보내지 않는다.
 // 키는 버셀 환경 변수(내 컴퓨터에서는 .env.local, 깃허브 제외)에만 있다.
 
-/** 온라인(버셀)이면 슈파베이스에 저장하고, 내 컴퓨터면 data/*.json 에 저장한다 */
-export const ONLINE = !!process.env.VERCEL;
+/**
+ * 온라인(버셀)이면 슈파베이스에 저장하고, 내 컴퓨터면 data/*.json 에 저장한다.
+ * vercel env pull 이 .env.local 에 VERCEL=1 을 넣을 수 있어서, 윈도우(내 컴퓨터)는 항상 로컬로 본다.
+ */
+export const ONLINE = !!process.env.VERCEL && process.platform !== "win32";
 
 let client: SupabaseClient | null = null;
 

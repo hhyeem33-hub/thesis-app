@@ -45,6 +45,8 @@
 - `lib/store.ts`: JSON 파일 읽기/쓰기, 경로 자동 감지 / `lib/folders.ts`: 폴더 생성 (보호 규칙 구현) / `lib/validate.ts`: 이름 검사 (화면·서버 공용)
 - `app/actions.ts`: 서버 함수 (프로젝트 생성, 다시 시도, 폴더 열기, 설정 저장)
 - `lib/ai.ts`: Claude API (모델 `claude-haiku-5-5`, 원고 JSON 구조화 출력). 키 순서: 환경 변수 `ANTHROPIC_API_KEY`(버셀) → `data/ai-key.json`(설정 화면에서 저장, gitignore). 키 원문은 브라우저로 보내지 않음(끝 4자리만). AI 초안은 `make_hwpx.py --project`로 저장, 버셀(`VERCEL` 환경 변수)에서는 저장 생략.
+- `lib/db.ts`: 슈파베이스 (온라인 전용). `ONLINE` = `VERCEL` 환경 변수 있고 윈도우가 아님 → 프로젝트·AI 초안 기록을 슈파베이스(`projects`, `ai_drafts` 표, `supabase/schema.sql`)에 저장. 내 컴퓨터는 계속 `data/*.json` + 폴더 생성. 비밀 키(`SUPABASE_SERVICE_ROLE_KEY`)는 서버에서만 사용, RLS 켜고 정책 없음(공개 키로 접근 불가).
+- `vercel env pull`은 비밀 값을 `[SENSITIVE]`로만 받으므로 로컬에서는 슈파베이스를 쓰지 않는다. 표 변경은 슈파베이스 대시보드 SQL Editor에서 `supabase/schema.sql` 실행.
 - 이 Next.js는 `cacheComponents`가 켜져 있다: `export const dynamic` 사용 불가. 파일을 읽는 화면은 `<Suspense>` 안의 컴포넌트에서 `await connection()` 후 읽는다.
 
 ## AI 논문 초안 (hufs-thesis-hwpx 스킬)

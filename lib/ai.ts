@@ -31,12 +31,18 @@ async function readSavedKey(): Promise<string> {
   }
 }
 
+/** 환경 변수의 키 (vercel env pull 이 남기는 "[SENSITIVE]" 같은 자리 표시는 무시) */
+function envApiKey() {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  return key?.startsWith("sk-ant-") ? key : "";
+}
+
 async function getApiKey(): Promise<string> {
-  return process.env.ANTHROPIC_API_KEY?.trim() || (await readSavedKey());
+  return envApiKey() || (await readSavedKey());
 }
 
 export async function getAiKeyStatus(): Promise<AiKeyStatus> {
-  const envKey = process.env.ANTHROPIC_API_KEY?.trim();
+  const envKey = envApiKey();
   if (envKey) return { source: "env", last4: envKey.slice(-4) };
   const saved = await readSavedKey();
   return saved ? { source: "saved", last4: saved.slice(-4) } : { source: "none" };

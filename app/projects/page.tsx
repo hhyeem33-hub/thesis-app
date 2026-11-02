@@ -11,6 +11,7 @@ import { getAiKeyStatus } from "@/lib/ai";
 import { ONLINE } from "@/lib/db";
 import { countAiDocs } from "@/lib/folders";
 import { getProjects } from "@/lib/store";
+import type { Project } from "@/lib/types";
 
 export default function ProjectsPage() {
   return (
@@ -22,7 +23,22 @@ export default function ProjectsPage() {
 
 async function ProjectsContent() {
   await connection();
-  const projects = await getProjects();
+  let projects: Project[];
+  try {
+    projects = await getProjects();
+  } catch (e) {
+    // 온라인에서 슈파베이스 표가 아직 없거나 연결이 안 될 때
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="프로젝트" description="지금까지 만든 프로젝트예요. 최신순으로 보여요." />
+        <p className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          프로젝트 기록을 불러오지 못했어요. 슈파베이스에 표가 만들어졌는지 확인해 주세요.
+          <br />
+          <span className="text-xs">{e instanceof Error ? e.message : String(e)}</span>
+        </p>
+      </div>
+    );
+  }
   const keyStatus = await getAiKeyStatus();
   const rows = await Promise.all(
     projects.map(async (p) => ({ ...p, aiDocCount: await countAiDocs(p) }))
