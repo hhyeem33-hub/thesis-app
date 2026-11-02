@@ -21,7 +21,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_NAME_LENGTH, validateProjectName } from "@/lib/validate";
 
-export function NewProjectDialog({ existingNames }: { existingNames: string[] }) {
+export function NewProjectDialog({
+  existingNames,
+  online = false,
+}: {
+  existingNames: string[];
+  /** 온라인(버셀): 기록만 저장하고 폴더는 만들지 않는다 */
+  online?: boolean;
+}) {
   const router = useRouter();
   // 홈의 "새 프로젝트 만들기" 버튼은 /projects?new=1 로 와서 창을 바로 연다
   const requested = useSearchParams().get("new") === "1";
@@ -86,8 +93,17 @@ export function NewProjectDialog({ existingNames }: { existingNames: string[] })
           <DialogHeader>
             <DialogTitle>새 프로젝트 만들기</DialogTitle>
             <DialogDescription>
-              만들면 옵시디언과 구글 드라이브의 &lsquo;논문작업실&rsquo; 폴더 안에
-              같은 이름의 폴더가 자동으로 생겨요.
+              {online ? (
+                <>
+                  온라인에서는 프로젝트 기록만 저장돼요. 옵시디언·드라이브 폴더는 내 컴퓨터에서만
+                  만들어져요.
+                </>
+              ) : (
+                <>
+                  만들면 옵시디언과 구글 드라이브의 &lsquo;논문작업실&rsquo; 폴더 안에
+                  같은 이름의 폴더가 자동으로 생겨요.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
 

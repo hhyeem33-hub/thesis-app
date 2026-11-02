@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { dbAddProject, dbGetProjects, ONLINE } from "./db";
 import type { Project, Settings } from "./types";
 
 // DB 대신 프로젝트 폴더 안의 data/*.json 파일에 저장한다.
@@ -21,12 +22,20 @@ async function writeJson(file: string, data: unknown) {
   await fs.writeFile(file, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
-/** 최신순으로 정렬된 프로젝트 목록 */
+/** 최신순으로 정렬된 프로젝트 목록 (온라인은 슈파베이스, 내 컴퓨터는 data/projects.json) */
 export async function getProjects(): Promise<Project[]> {
+  if (ONLINE) return dbGetProjects();
   const list = (await readJson<Project[]>(PROJECTS_FILE)) ?? [];
   return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+export async function addProject(project: Project) {
+  if (ONLINE) return dbAddProject(project);
+  const list = (await readJson<Project[]>(PROJECTS_FILE)) ?? [];
+  await writeJson(PROJECTS_FILE, [...list, project]);
+}
+
+/** 내 컴퓨터 전용 (폴더 다시 시도 결과 저장) */
 export async function saveProjects(projects: Project[]) {
   await writeJson(PROJECTS_FILE, projects);
 }

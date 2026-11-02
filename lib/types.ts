@@ -4,6 +4,8 @@ export type FolderStatus = {
   path?: string;
   /** 실패 이유 (실패했을 때) */
   error?: string;
+  /** 온라인(버셀)에서 만든 프로젝트: 폴더는 내 컴퓨터에서만 만들어진다 */
+  localOnly?: boolean;
 };
 
 export type Project = {

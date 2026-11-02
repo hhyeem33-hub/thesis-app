@@ -20,7 +20,9 @@ import {
   writeDraft,
   type Manuscript,
 } from "@/lib/ai";
+import { dbAddDraft, ONLINE as ON_VERCEL } from "@/lib/db";
 import {
+  addProject,
   getProjects,
   getSettings,
   isDirectory,
@@ -37,9 +39,33 @@ export async function createProject(input: {
   const name = input.name.trim();
   const description = input.description.trim().slice(0, 500);
 
-  const projects = await getProjects();
+  let projects: Project[];
+  try {
+    projects = await getProjects();
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
   const nameError = validateProjectName(name, projects.map((p) => p.name));
   if (nameError) return { ok: false, error: nameError };
+
+  // 온라인(버셀): 슈파베이스에 기록만 하고, 폴더는 내 컴퓨터에서만 만든다
+  if (ON_VERCEL) {
+    const localOnly = { ok: false, localOnly: true };
+    try {
+      await addProject({
+        id: randomUUID(),
+        name,
+        description,
+        createdAt: new Date().toISOString(),
+        obsidian: localOnly,
+        drive: localOnly,
+      });
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    revalidatePath("/projects");
+    return { ok: true, warning: "온라인에 기록했어요. 옵시디언·드라이브 폴더는 내 컴퓨터에서만 만들어져요." };
+  }
 
   // 앱 밖에서 이미 만들어진 같은 이름 폴더는 건드리지 않는다
   const settings = await getSettings();
@@ -65,7 +91,7 @@ export async function createProject(input: {
   project.obsidian = await createObsidianFolder(settings.obsidianVaultPath, project);
   project.drive = await createDriveFolder(settings.driveRootPath, project);
 
-  await saveProjects([...projects, project]);
+  await addProject(project);
   revalidatePath("/projects");
   const failed = [
     !project.obsidian.ok && "옵시디언",
@@ -80,6 +106,7 @@ export async function retryFolder(
   id: string,
   target: FolderTarget
 ): Promise<ActionResult> {
+  if (ON_VERCEL) return { ok: false, error: "폴더는 내 컴퓨터에서만 만들어져요." };
   const projects = await getProjects();
   const project = projects.find((p) => p.id === id);
   if (!project) return { ok: false, error: "프로젝트를 찾을 수 없어요." };
@@ -101,6 +128,7 @@ export async function openFolder(
   id: string,
   target: FolderTarget | "ai"
 ): Promise<ActionResult> {
+  if (ON_VERCEL) return { ok: false, error: "폴더는 내 컴퓨터에서만 열 수 있어요." };
   const project = (await getProjects()).find((p) => p.id === id);
   const folder =
     target === "ai"
@@ -138,7 +166,6 @@ export async function updateSettings(input: {
 
 // ── AI 연결 · AI 초안 ────────────────────────────────────────────────────────
 
-const ON_VERCEL = !!process.env.VERCEL;
 
 export async function saveAiKey(apiKey: string): Promise<ActionResult> {
   const key = apiKey.trim();
@@ -224,8 +251,22 @@ export async function generateDraft(input: {
     return { ok: false, error: aiErrorMessage(e) };
   }
 
-  if (!project)
+  if (!project) {
+    try {
+      await dbAddDraft({
+        projectId: null,
+        topic,
+        purpose: input.purpose.trim().slice(0, 1000),
+        method: input.method.trim().slice(0, 1000),
+        title: manuscript.title,
+        manuscript,
+        savedPath: null,
+      });
+    } catch (e) {
+      console.error("AI 초안 기록 실패", e); // 기록이 안 돼도 초안은 보여 준다
+    }
     return { ok: true, manuscript, saveNote: "온라인(버셀)에서는 hwpx 파일을 저장하지 않아요. ‘원고 복사’로 가져가거나, 내 컴퓨터에서 앱을 실행하면 hwpx로 저장돼요." };
+  }
   if (!project.drive.ok)
     return { ok: true, manuscript, saveNote: "드라이브 폴더가 없어 hwpx로 저장하지 못했어요. 표에서 드라이브 ‘다시 시도’를 눌러 주세요." };
   try {

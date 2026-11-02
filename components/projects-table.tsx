@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   FileText,
   FolderOpen,
+  Laptop,
   Loader2,
   RotateCw,
   XCircle,
@@ -100,6 +101,17 @@ function StatusCell({
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  if (status.localOnly) {
+    return (
+      <Hint label="온라인에서 만든 프로젝트예요. 폴더는 내 컴퓨터에서 앱을 실행할 때만 만들어져요.">
+        <span className="inline-flex cursor-help items-center gap-1.5 text-sm text-muted-foreground">
+          <Laptop className="size-4" />
+          내 컴퓨터에서만
+        </span>
+      </Hint>
+    );
+  }
 
   if (status.ok) {
     return (
