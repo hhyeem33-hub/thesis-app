@@ -202,15 +202,16 @@ async function saveDraftHwpx(projectName: string, manuscript: Manuscript): Promi
 }
 
 export async function generateDraft(input: {
-  projectId: string;
+  /** 내 컴퓨터에서만 필요 (버셀에는 프로젝트가 없어 주제만으로 쓴다) */
+  projectId?: string;
   topic: string;
   purpose: string;
   method: string;
 }): Promise<DraftResult> {
   const topic = input.topic.trim().slice(0, 300);
   if (!topic) return { ok: false, error: "주제를 적어 주세요." };
-  const project = (await getProjects()).find((p) => p.id === input.projectId);
-  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없어요." };
+  const project = ON_VERCEL ? null : (await getProjects()).find((p) => p.id === input.projectId);
+  if (!ON_VERCEL && !project) return { ok: false, error: "프로젝트를 골라 주세요." };
 
   let manuscript: Manuscript;
   try {
@@ -223,8 +224,8 @@ export async function generateDraft(input: {
     return { ok: false, error: aiErrorMessage(e) };
   }
 
-  if (ON_VERCEL)
-    return { ok: true, manuscript, saveNote: "온라인(버셀)에서는 hwpx 파일을 저장하지 않아요. 내 컴퓨터에서 앱을 실행하면 저장돼요." };
+  if (!project)
+    return { ok: true, manuscript, saveNote: "온라인(버셀)에서는 hwpx 파일을 저장하지 않아요. ‘원고 복사’로 가져가거나, 내 컴퓨터에서 앱을 실행하면 hwpx로 저장돼요." };
   if (!project.drive.ok)
     return { ok: true, manuscript, saveNote: "드라이브 폴더가 없어 hwpx로 저장하지 못했어요. 표에서 드라이브 ‘다시 시도’를 눌러 주세요." };
   try {

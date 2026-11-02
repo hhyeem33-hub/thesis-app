@@ -85,9 +85,12 @@ function ManuscriptView({ m }: { m: Manuscript }) {
 export function AiDraftDialog({
   projects,
   hasKey,
+  onVercel,
 }: {
   projects: { id: string; name: string }[];
   hasKey: boolean;
+  /** 온라인(버셀)에서는 프로젝트 없이 주제만으로 쓰고 화면에만 보여 준다 */
+  onVercel: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
@@ -112,7 +115,12 @@ export function AiDraftDialog({
     if (!topic.trim() || pending) return;
     setError(null);
     startTransition(async () => {
-      const r = await generateDraft({ projectId, topic, purpose, method });
+      const r = await generateDraft({
+        projectId: onVercel ? undefined : projectId,
+        topic,
+        purpose,
+        method,
+      });
       if (!r.ok) {
         setError(r.error);
         toast.error("초안을 쓰지 못했어요", { description: r.error });
@@ -131,7 +139,7 @@ export function AiDraftDialog({
   }
 
   // 버튼은 막지 않고, 창 안에서 무엇을 먼저 해야 하는지 알려 준다
-  const blocker = !projects.length ? "project" : !hasKey ? "key" : null;
+  const blocker = !onVercel && !projects.length ? "project" : !hasKey ? "key" : null;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -183,27 +191,38 @@ export function AiDraftDialog({
             <DialogHeader>
               <DialogTitle>AI로 초안 쓰기</DialogTitle>
               <DialogDescription>
-                Claude가 한국외대 학위논문 양식에 맞춰 초안을 써요. 내 컴퓨터에서는 드라이브의
-                &lsquo;AI 작성글&rsquo; 폴더에 hwpx로 저장돼요. 1분쯤 걸려요.
+                {onVercel ? (
+                  <>
+                    Claude가 한국외대 학위논문 양식에 맞춰 초안을 써서 화면에 보여 줘요. 온라인
+                    미리보기라 주제만 적으면 되고, hwpx 파일은 저장하지 않아요. 1분쯤 걸려요.
+                  </>
+                ) : (
+                  <>
+                    Claude가 한국외대 학위논문 양식에 맞춰 초안을 써요. 내 컴퓨터에서는 드라이브의
+                    &lsquo;AI 작성글&rsquo; 폴더에 hwpx로 저장돼요. 1분쯤 걸려요.
+                  </>
+                )}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="draft-project">프로젝트</Label>
-              <select
-                id="draft-project"
-                value={projectId}
-                disabled={pending}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!onVercel && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="draft-project">프로젝트</Label>
+                <select
+                  id="draft-project"
+                  value={projectId}
+                  disabled={pending}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="draft-topic">주제</Label>

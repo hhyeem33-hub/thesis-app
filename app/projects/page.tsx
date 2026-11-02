@@ -36,6 +36,7 @@ async function ProjectsContent() {
             <AiDraftDialog
               projects={projects.map((p) => ({ id: p.id, name: p.name }))}
               hasKey={keyStatus.source !== "none"}
+              onVercel={!!process.env.VERCEL}
             />
             <NewProjectDialog existingNames={projects.map((p) => p.name)} />
           </div>
