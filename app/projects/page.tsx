@@ -1,10 +1,12 @@
 import { Suspense } from "react";
 import { connection } from "next/server";
+import { AiDraftDialog } from "@/components/ai-draft-dialog";
 import { AiWritingGuide } from "@/components/ai-writing-guide";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { PageHeader } from "@/components/page-header";
 import { ProjectsSkeleton } from "@/components/page-skeletons";
 import { ProjectsTable } from "@/components/projects-table";
+import { getAiKeyStatus } from "@/lib/ai";
 import { countAiDocs } from "@/lib/folders";
 import { getProjects } from "@/lib/store";
 
@@ -19,6 +21,7 @@ export default function ProjectsPage() {
 async function ProjectsContent() {
   await connection();
   const projects = await getProjects();
+  const keyStatus = await getAiKeyStatus();
   const rows = await Promise.all(
     projects.map(async (p) => ({ ...p, aiDocCount: await countAiDocs(p) }))
   );
@@ -28,7 +31,15 @@ async function ProjectsContent() {
       <PageHeader
         title="프로젝트"
         description="지금까지 만든 프로젝트예요. 최신순으로 보여요."
-        action={<NewProjectDialog existingNames={projects.map((p) => p.name)} />}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <AiDraftDialog
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              hasKey={keyStatus.source !== "none"}
+            />
+            <NewProjectDialog existingNames={projects.map((p) => p.name)} />
+          </div>
+        }
       />
       <ProjectsTable projects={rows} />
       <AiWritingGuide projectName={projects[0]?.name ?? "프로젝트 이름"} />

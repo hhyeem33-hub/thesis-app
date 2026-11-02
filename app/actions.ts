@@ -2,6 +2,8 @@
 
 import { execFile } from "child_process";
 import { randomUUID } from "crypto";
+import { existsSync, promises as fs } from "fs";
+import os from "os";
 import path from "path";
 import { revalidatePath } from "next/cache";
 import {
@@ -11,13 +13,21 @@ import {
   projectFolderExists,
 } from "@/lib/folders";
 import {
+  aiErrorMessage,
+  deleteApiKey,
+  saveApiKey,
+  testConnection,
+  writeDraft,
+  type Manuscript,
+} from "@/lib/ai";
+import {
   getProjects,
   getSettings,
   isDirectory,
   saveProjects,
   saveSettings,
 } from "@/lib/store";
-import type { ActionResult, FolderTarget, Project } from "@/lib/types";
+import type { ActionResult, DraftResult, FolderTarget, Project } from "@/lib/types";
 import { validateProjectName } from "@/lib/validate";
 
 export async function createProject(input: {
@@ -124,4 +134,104 @@ export async function updateSettings(input: {
   await saveSettings({ obsidianVaultPath, driveRootPath });
   revalidatePath("/settings");
   return { ok: true };
+}
+
+// ── AI 연결 · AI 초안 ────────────────────────────────────────────────────────
+
+const ON_VERCEL = !!process.env.VERCEL;
+
+export async function saveAiKey(apiKey: string): Promise<ActionResult> {
+  const key = apiKey.trim();
+  if (ON_VERCEL)
+    return { ok: false, error: "버셀에서는 키를 여기 저장할 수 없어요. 버셀의 환경 변수 ANTHROPIC_API_KEY에 넣어 주세요." };
+  if (!key.startsWith("sk-ant-"))
+    return { ok: false, error: "Claude API 키는 ‘sk-ant-’로 시작해요. 키를 다시 확인해 주세요." };
+  try {
+    await testConnection(key);
+  } catch (e) {
+    return { ok: false, error: aiErrorMessage(e) };
+  }
+  await saveApiKey(key);
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+export async function removeAiKey(): Promise<ActionResult> {
+  if (ON_VERCEL) return { ok: false, error: "버셀에서는 환경 변수에서 지워 주세요." };
+  await deleteApiKey();
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/** 입력한 키(없으면 저장된 키)로 연결을 확인한다 */
+export async function testAiConnection(apiKey?: string): Promise<ActionResult> {
+  try {
+    const name = await testConnection(apiKey?.trim() || undefined);
+    return { ok: true, warning: `${name} 모델에 연결됐어요.` };
+  } catch (e) {
+    return { ok: false, error: aiErrorMessage(e) };
+  }
+}
+
+function pythonPath() {
+  const local = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, "Programs", "Python", "Python312", "python.exe")
+    : "";
+  return local && existsSync(local) ? local : "python";
+}
+
+/** hufs-thesis-hwpx 스킬 스크립트로 드라이브 'AI 작성글' 폴더에 hwpx를 저장한다 */
+async function saveDraftHwpx(projectName: string, manuscript: Manuscript): Promise<string> {
+  const tmp = path.join(os.tmpdir(), `thesis-draft-${randomUUID()}.json`);
+  await fs.writeFile(tmp, JSON.stringify(manuscript), "utf8");
+  const script = path.join(process.cwd(), ".claude", "skills", "hufs-thesis-hwpx", "scripts", "make_hwpx.py");
+  try {
+    const out = await new Promise<string>((resolve, reject) =>
+      execFile(
+        pythonPath(),
+        [script, tmp, "--project", projectName],
+        { cwd: process.cwd(), encoding: "utf8", timeout: 120_000, env: { ...process.env, PYTHONIOENCODING: "utf-8" } },
+        (err, stdout, stderr) =>
+          err ? reject(new Error((stderr || stdout || err.message).trim())) : resolve(stdout)
+      )
+    );
+    return out.match(/저장 완료: (.+)/)?.[1]?.trim() ?? "";
+  } finally {
+    await fs.rm(tmp, { force: true });
+  }
+}
+
+export async function generateDraft(input: {
+  projectId: string;
+  topic: string;
+  purpose: string;
+  method: string;
+}): Promise<DraftResult> {
+  const topic = input.topic.trim().slice(0, 300);
+  if (!topic) return { ok: false, error: "주제를 적어 주세요." };
+  const project = (await getProjects()).find((p) => p.id === input.projectId);
+  if (!project) return { ok: false, error: "프로젝트를 찾을 수 없어요." };
+
+  let manuscript: Manuscript;
+  try {
+    manuscript = await writeDraft({
+      topic,
+      purpose: input.purpose.trim().slice(0, 1000),
+      method: input.method.trim().slice(0, 1000),
+    });
+  } catch (e) {
+    return { ok: false, error: aiErrorMessage(e) };
+  }
+
+  if (ON_VERCEL)
+    return { ok: true, manuscript, saveNote: "온라인(버셀)에서는 hwpx 파일을 저장하지 않아요. 내 컴퓨터에서 앱을 실행하면 저장돼요." };
+  if (!project.drive.ok)
+    return { ok: true, manuscript, saveNote: "드라이브 폴더가 없어 hwpx로 저장하지 못했어요. 표에서 드라이브 ‘다시 시도’를 눌러 주세요." };
+  try {
+    const savedPath = await saveDraftHwpx(project.name, manuscript);
+    revalidatePath("/projects");
+    return { ok: true, manuscript, savedPath };
+  } catch (e) {
+    return { ok: true, manuscript, saveNote: `hwpx로 저장하지 못했어요: ${e instanceof Error ? e.message : e}` };
+  }
 }

@@ -44,7 +44,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <TooltipProvider delay={300}>
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset>
+            <SidebarInset className="min-w-0">
               <header className="flex h-14 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
                 <Hint label="사이드바 접기/펼치기 (Ctrl+B)">
                   <SidebarTrigger aria-label="사이드바 열기/닫기" />

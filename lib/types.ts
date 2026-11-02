@@ -34,3 +34,15 @@ export type FolderTarget = "obsidian" | "drive";
 export type ActionResult =
   | { ok: true; /** 성공했지만 알려줄 문제 (예: 폴더 일부 실패) */ warning?: string }
   | { ok: false; error: string };
+
+export type DraftResult =
+  | {
+      ok: true;
+      /** AI가 쓴 원고 (화면 표시용) */
+      manuscript: import("./ai").Manuscript;
+      /** hwpx 저장 위치 (내 컴퓨터에서 저장했을 때) */
+      savedPath?: string;
+      /** 저장하지 못한 이유 (원고는 화면에 보여 줌) */
+      saveNote?: string;
+    }
+  | { ok: false; error: string };
