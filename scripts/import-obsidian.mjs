@@ -107,7 +107,12 @@ const have = new Set(local.map((s) => s.id));
 const added = sources.filter((s) => !have.has(s.id));
 writeFileSync(localFile, JSON.stringify([...local, ...added], null, 2) + "\n", "utf8");
 
-// ── 온라인: 슈파베이스 SQL Editor 에서 실행할 파일 (약 700KB씩 나눔) ──
+// ── 온라인: 슈파베이스 SQL Editor 에서 실행할 파일 ──
+// SQL Editor는 너무 큰 쿼리를 거부한다 ("Query is too large"). 그래서
+// - 파일 하나에 자료 최대 20개, 크기 최대 약 150KB
+// - 아주 긴 글은 3만 자씩 잘라서, 첫 조각은 insert, 나머지는 update로 이어 붙인다.
+//   이어 붙이기는 "지금까지 들어간 글자 수가 딱 맞을 때만" 해서 두 번 실행해도 중복되지 않는다.
+//   (그래서 파일은 번호 순서대로 실행해야 한다. 순서가 꼬였으면 처음부터 다시 실행하면 채워진다)
 const outDir = path.join(ROOT, "supabase", "import");
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
@@ -118,34 +123,66 @@ function dollar(s) {
   return `${tag}${s}${tag}`;
 }
 const projectSql = `(select id from public.projects where name = ${dollar(PROJECT_NAME)})`;
-const row = (s) =>
-  `insert into public.sources (id, project_id, title, type, origin, content, created_at, updated_at, classification)
-values ('${s.id}', ${projectSql}, ${dollar(s.title)}, '${s.type}', ${dollar(s.origin)}, ${dollar(s.content)}, '${s.createdAt}', '${s.updatedAt}', null)
-on conflict (id) do nothing;`;
 
-const LIMIT = 700_000; // 바이트 (SQL Editor가 버거워하지 않게)
-const chunks = [[]];
-let size = 0;
-for (const s of sources) {
-  const sql = row(s);
-  const bytes = Buffer.byteLength(sql, "utf8");
-  if (size + bytes > LIMIT && chunks.at(-1).length) {
-    chunks.push([]);
-    size = 0;
+const MAX_PER_FILE = 20;
+const MAX_FILE_BYTES = 150_000;
+const PIECE_CHARS = 30_000; // 한글 3만 자 ≈ 90KB
+
+/** 자료 하나 → SQL 문장 여러 개 (글자 수는 PostgreSQL length()와 같게 코드포인트로 센다) */
+function statements(s) {
+  const chars = Array.from(s.content);
+  const pieces = [];
+  for (let i = 0; i < chars.length; i += PIECE_CHARS) pieces.push(chars.slice(i, i + PIECE_CHARS).join(""));
+  if (!pieces.length) pieces.push("");
+  const out = [
+    `insert into public.sources (id, project_id, title, type, origin, content, created_at, updated_at, classification)
+values ('${s.id}', ${projectSql}, ${dollar(s.title)}, '${s.type}', ${dollar(s.origin)}, ${dollar(pieces[0])}, '${s.createdAt}', '${s.updatedAt}', null)
+on conflict (id) do nothing;`,
+  ];
+  let done = Array.from(pieces[0]).length;
+  for (const piece of pieces.slice(1)) {
+    out.push(
+      `update public.sources set content = content || ${dollar(piece)}
+where id = '${s.id}' and length(content) = ${done};`
+    );
+    done += Array.from(piece).length;
   }
-  chunks.at(-1).push(sql);
-  size += bytes;
+  return out;
 }
-chunks.forEach((c, i) => {
-  const name = `${String(i + 1).padStart(2, "0")}-sources.sql`;
+
+const files = [{ stmts: [], items: 0, bytes: 0 }];
+for (const s of sources) {
+  const stmts = statements(s);
+  // 새 자료는 파일에 20개가 찼거나 크기가 넘치면 다음 파일에서 시작
+  const first = Buffer.byteLength(stmts[0], "utf8");
+  let cur = files.at(-1);
+  if (cur.items >= MAX_PER_FILE || (cur.stmts.length && cur.bytes + first > MAX_FILE_BYTES)) {
+    cur = { stmts: [], items: 0, bytes: 0 };
+    files.push(cur);
+  }
+  cur.items++;
+  for (const st of stmts) {
+    const b = Buffer.byteLength(st, "utf8");
+    if (cur.stmts.length && cur.bytes + b > MAX_FILE_BYTES) {
+      cur = { stmts: [], items: 0, bytes: 0 }; // 긴 글의 남은 조각은 다음 파일로
+      files.push(cur);
+    }
+    cur.stmts.push(st);
+    cur.bytes += b;
+  }
+}
+const pad = (i) => String(i + 1).padStart(2, "0");
+files.forEach((f, i) => {
   writeFileSync(
-    path.join(outDir, name),
-    `-- 옵시디언 자료 가져오기 ${i + 1}/${chunks.length} (${c.length}개). 여러 번 실행해도 중복으로 들어가지 않는다.\n` +
-      c.join("\n\n") +
+    path.join(outDir, `${pad(i)}-sources.sql`),
+    `-- 옵시디언 자료 가져오기 ${i + 1}/${files.length}: 새 자료 ${f.items}개${f.stmts.length > f.items ? " + 긴 글 이어 붙이기" : ""}\n` +
+      "-- 번호 순서대로 실행하세요. 여러 번 실행해도 중복으로 들어가지 않습니다.\n\n" +
+      f.stmts.join("\n\n") +
       "\n",
     "utf8"
   );
 });
+const biggest = Math.max(...files.map((f) => f.bytes));
 
 console.log(
   JSON.stringify(
@@ -156,7 +193,9 @@ console.log(
       중복이라_뺀_노트: skipped.length,
       내컴퓨터_새로_추가: added.length,
       내컴퓨터_이미_있어서_건너뜀: sources.length - added.length,
-      온라인_SQL_파일: chunks.map((c, i) => `${String(i + 1).padStart(2, "0")}-sources.sql (${c.length}개)`),
+      온라인_SQL_파일_수: files.length,
+      가장_큰_파일_KB: Math.round(biggest / 1000),
+      온라인_SQL_파일: files.map((f, i) => `${pad(i)}-sources.sql (새 자료 ${f.items}개, ${Math.round(f.bytes / 1000)}KB)`),
     },
     null,
     2
