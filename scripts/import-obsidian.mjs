@@ -114,8 +114,9 @@ writeFileSync(localFile, JSON.stringify([...local, ...added], null, 2) + "\n", "
 //   이어 붙이기는 "지금까지 들어간 글자 수가 딱 맞을 때만" 해서 두 번 실행해도 중복되지 않는다.
 //   (그래서 파일은 번호 순서대로 실행해야 한다. 순서가 꼬였으면 처음부터 다시 실행하면 채워진다)
 const outDir = path.join(ROOT, "supabase", "import");
-rmSync(outDir, { recursive: true, force: true });
+// 폴더는 지우지 않고(메모장 등이 열고 있으면 실패하므로) 예전 .sql 파일만 지운다
 mkdirSync(outDir, { recursive: true });
+for (const f of readdirSync(outDir)) if (f.endsWith(".sql")) rmSync(path.join(outDir, f), { force: true });
 
 function dollar(s) {
   let tag = "$t$";
@@ -173,12 +174,16 @@ for (const s of sources) {
 }
 const pad = (i) => String(i + 1).padStart(2, "0");
 files.forEach((f, i) => {
+  const body = f.stmts.join("\n\n");
+  // 머리말 3줄 + 본문 + 빈 줄 + 끝 표시 1줄 → 붙여 넣은 뒤 에디터의 마지막 줄 번호와 같아야 한다
+  const lines = 3 + body.split("\n").length + 2;
   writeFileSync(
     path.join(outDir, `${pad(i)}-sources.sql`),
-    `-- 옵시디언 자료 가져오기 ${i + 1}/${files.length}: 새 자료 ${f.items}개${f.stmts.length > f.items ? " + 긴 글 이어 붙이기" : ""}\n` +
-      "-- 번호 순서대로 실행하세요. 여러 번 실행해도 중복으로 들어가지 않습니다.\n\n" +
-      f.stmts.join("\n\n") +
-      "\n",
+    `-- ▶ ${pad(i)}번 파일 시작 (${i + 1}/${files.length}) · 새 자료 ${f.items}개${f.stmts.length > f.items ? " + 긴 글 이어 붙이기" : ""} · 전체 ${lines}줄\n` +
+      "-- 번호 순서대로 실행하세요. 여러 번 실행해도 중복으로 들어가지 않습니다.\n" +
+      "-- 에디터를 비운 뒤 이 파일만 붙여 넣으세요. 맨 아래에 '■ 파일 끝' 줄이 보여야 합니다.\n" +
+      body +
+      `\n\n-- ■ ${pad(i)}번 파일 끝\n`,
     "utf8"
   );
 });
