@@ -129,47 +129,56 @@ const MAX_PER_FILE = 20;
 const MAX_FILE_BYTES = 150_000;
 const PIECE_CHARS = 30_000; // 한글 3만 자 ≈ 90KB
 
-/** 자료 하나 → SQL 문장 여러 개 (글자 수는 PostgreSQL length()와 같게 코드포인트로 센다) */
+/**
+ * 자료 하나 → SQL 문장 여러 개. after = 그 문장까지 실행했을 때 글자 수
+ * (글자 수는 PostgreSQL length()와 같게 코드포인트로 센다)
+ */
 function statements(s) {
   const chars = Array.from(s.content);
   const pieces = [];
   for (let i = 0; i < chars.length; i += PIECE_CHARS) pieces.push(chars.slice(i, i + PIECE_CHARS).join(""));
   if (!pieces.length) pieces.push("");
   const out = [
-    `insert into public.sources (id, project_id, title, type, origin, content, created_at, updated_at, classification)
+    {
+      after: Array.from(pieces[0]).length,
+      sql: `insert into public.sources (id, project_id, title, type, origin, content, created_at, updated_at, classification)
 values ('${s.id}', ${projectSql}, ${dollar(s.title)}, '${s.type}', ${dollar(s.origin)}, ${dollar(pieces[0])}, '${s.createdAt}', '${s.updatedAt}', null)
 on conflict (id) do nothing;`,
+    },
   ];
   let done = Array.from(pieces[0]).length;
   for (const piece of pieces.slice(1)) {
-    out.push(
-      `update public.sources set content = content || ${dollar(piece)}
-where id = '${s.id}' and length(content) = ${done};`
-    );
     done += Array.from(piece).length;
+    out.push({
+      after: done,
+      sql: `update public.sources set content = content || ${dollar(piece)}
+where id = '${s.id}' and length(content) = ${done - Array.from(piece).length};`,
+    });
   }
   return out;
 }
 
-const files = [{ stmts: [], items: 0, bytes: 0 }];
+const files = [{ stmts: [], items: 0, bytes: 0, done: new Map() }];
 for (const s of sources) {
   const stmts = statements(s);
   // 새 자료는 파일에 20개가 찼거나 크기가 넘치면 다음 파일에서 시작
-  const first = Buffer.byteLength(stmts[0], "utf8");
+  const first = Buffer.byteLength(stmts[0].sql, "utf8");
   let cur = files.at(-1);
   if (cur.items >= MAX_PER_FILE || (cur.stmts.length && cur.bytes + first > MAX_FILE_BYTES)) {
-    cur = { stmts: [], items: 0, bytes: 0 };
+    cur = { stmts: [], items: 0, bytes: 0, done: new Map() };
     files.push(cur);
   }
   cur.items++;
-  for (const st of stmts) {
+  for (const { sql: st, after } of stmts) {
     const b = Buffer.byteLength(st, "utf8");
     if (cur.stmts.length && cur.bytes + b > MAX_FILE_BYTES) {
-      cur = { stmts: [], items: 0, bytes: 0 }; // 긴 글의 남은 조각은 다음 파일로
+      cur = { stmts: [], items: 0, bytes: 0, done: new Map() }; // 긴 글의 남은 조각은 다음 파일로
       files.push(cur);
     }
     cur.stmts.push(st);
     cur.bytes += b;
+    // 이 파일을 다 실행하면 이 자료는 최소 after 글자가 들어가 있어야 한다
+    cur.done.set(s.id, after);
   }
 }
 const pad = (i) => String(i + 1).padStart(2, "0");
@@ -188,6 +197,32 @@ files.forEach((f, i) => {
   );
 });
 const biggest = Math.max(...files.map((f) => f.bytes));
+
+// 확인용: 슈파베이스에 어느 파일까지 다 들어갔는지 보여 주는 작은 쿼리 (글 내용 없이 id와 글자 수만)
+const expectedRows = files.flatMap((f, i) => [...f.done].map(([id, len]) => `('${pad(i)}', '${id}'::uuid, ${len})`));
+writeFileSync(
+  path.join(outDir, "00-check.sql"),
+  `-- ✔ 진행 상황 확인 (아무것도 바꾸지 않고 읽기만 합니다)
+-- 결과 표에서 '상태'가 '완료'가 아닌 첫 번째 파일부터 다시 실행하면 됩니다.
+with expected (file, id, len) as (
+  values
+  ${expectedRows.join(",\n  ")}
+)
+select e.file as 파일,
+       count(*) as 자료,
+       count(*) filter (where length(s.content) >= e.len) as 완료,
+       count(*) filter (where s.id is not null and length(s.content) < e.len) as 일부만,
+       count(*) filter (where s.id is null) as 없음,
+       case when count(*) filter (where length(s.content) >= e.len) = count(*) then '완료'
+            when count(s.id) = 0 then '아직 안 들어감'
+            else '일부만 들어감' end as 상태
+from expected e
+left join public.sources s on s.id = e.id
+group by e.file
+order by e.file;
+`,
+  "utf8"
+);
 
 console.log(
   JSON.stringify(
