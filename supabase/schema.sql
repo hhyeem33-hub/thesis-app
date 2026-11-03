@@ -28,8 +28,34 @@ create table if not exists public.ai_drafts (
 
 create index if not exists ai_drafts_created_at_idx on public.ai_drafts (created_at desc);
 
+-- 자료 (자료 수집 · 자료 관리 · AI 분류)  ※ 2026-11 추가
+create table if not exists public.sources (
+  id              uuid primary key default gen_random_uuid(),
+  project_id      uuid references public.projects (id) on delete set null,
+  title           text not null,
+  type            text not null check (type in ('pdf', 'markdown', 'web', 'youtube')),
+  origin          text not null default '',
+  content         text not null default '',
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now(),
+  -- AI 분류 결과 { para, relevance(1~5), summary, classifiedAt } — 아직 안 했으면 null
+  classification  jsonb
+);
+
+create index if not exists sources_updated_at_idx on public.sources (updated_at desc);
+
+-- 연구 설정 (내 연구 주제·키워드) — 한 줄(id = 1)만 쓴다
+create table if not exists public.research_settings (
+  id          int primary key default 1 check (id = 1),
+  topic       text not null default '',
+  keywords    text[] not null default '{}',
+  updated_at  timestamptz not null default now()
+);
+
 -- 보안: RLS를 켜고 정책을 만들지 않는다.
 -- → 브라우저용 공개 키(anon)로는 읽기·쓰기가 모두 막히고,
 --   버셀 서버의 비밀 키(service role)만 접근할 수 있다.
 alter table public.projects enable row level security;
 alter table public.ai_drafts enable row level security;
+alter table public.sources enable row level security;
+alter table public.research_settings enable row level security;

@@ -48,3 +48,50 @@ export type DraftResult =
       saveNote?: string;
     }
   | { ok: false; error: string };
+
+// ── 자료 (AI WIKI 기능) ───────────────────────────────────────────────────
+
+export const SOURCE_TYPES = ["pdf", "markdown", "web", "youtube"] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+export const SOURCE_TYPE_LABEL: Record<SourceType | "ai", string> = {
+  pdf: "PDF",
+  markdown: "Markdown",
+  web: "웹",
+  youtube: "YouTube",
+  ai: "AI 생성",
+};
+
+export const PARA = ["projects", "areas", "resources", "archives"] as const;
+export type Para = (typeof PARA)[number];
+export const PARA_LABEL: Record<Para, string> = {
+  projects: "Projects",
+  areas: "Areas",
+  resources: "Resources",
+  archives: "Archives",
+};
+
+export type Classification = {
+  para: Para;
+  /** 내 연구 주제와의 관련도 1~5 */
+  relevance: number;
+  summary: string;
+  classifiedAt: string;
+};
+
+export type Source = {
+  id: string;
+  projectId: string | null;
+  title: string;
+  type: SourceType;
+  /** 출처 (URL, 서지 정보 등). 비어 있으면 "미확인 출처" */
+  origin: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  classification: Classification | null;
+};
+
+export type Research = {
+  topic: string;
+  keywords: string[];
+};

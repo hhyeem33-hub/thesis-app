@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { FolderStatus, Project } from "./types";
+import type { Classification, FolderStatus, Project, Research, Source } from "./types";
 
 // ⚠️ 슈파베이스 비밀 키(service role)는 서버에서만 쓴다. 브라우저로 보내지 않는다.
 // 키는 버셀 환경 변수(내 컴퓨터에서는 .env.local, 깃허브 제외)에만 있다.
@@ -86,4 +86,85 @@ export async function dbAddDraft(d: {
     saved_path: d.savedPath,
   });
   check(error);
+}
+
+// ── 자료 · 연구 설정 · 통계 ─────────────────────────────────────────────────
+
+type SourceRecord = {
+  id: string;
+  project_id: string | null;
+  title: string;
+  type: Source["type"];
+  origin: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  classification: Classification | null;
+};
+
+const toSource = (r: SourceRecord): Source => ({
+  id: r.id,
+  projectId: r.project_id,
+  title: r.title,
+  type: r.type,
+  origin: r.origin,
+  content: r.content,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  classification: r.classification,
+});
+
+const fromSource = (s: Source) => ({
+  id: s.id,
+  project_id: s.projectId,
+  title: s.title,
+  type: s.type,
+  origin: s.origin,
+  content: s.content,
+  created_at: s.createdAt,
+  updated_at: s.updatedAt,
+  classification: s.classification,
+});
+
+export async function dbGetSources(): Promise<Source[]> {
+  const { data, error } = await db()
+    .from("sources")
+    .select("*")
+    .order("updated_at", { ascending: false });
+  check(error);
+  return (data as SourceRecord[]).map(toSource);
+}
+
+export async function dbGetSource(id: string): Promise<Source | null> {
+  const { data, error } = await db().from("sources").select("*").eq("id", id).maybeSingle();
+  check(error);
+  return data ? toSource(data as SourceRecord) : null;
+}
+
+export async function dbSaveSource(s: Source) {
+  const { error } = await db().from("sources").upsert(fromSource(s));
+  check(error);
+}
+
+export async function dbGetResearch(): Promise<Research | null> {
+  const { data, error } = await db()
+    .from("research_settings")
+    .select("topic, keywords")
+    .eq("id", 1)
+    .maybeSingle();
+  check(error);
+  return data as Research | null;
+}
+
+export async function dbSaveResearch(r: Research) {
+  const { error } = await db()
+    .from("research_settings")
+    .upsert({ id: 1, topic: r.topic, keywords: r.keywords, updated_at: new Date().toISOString() });
+  check(error);
+}
+
+export async function dbCountDrafts(): Promise<number> {
+  const { count, error } = await db().from("ai_drafts").select("id", { count: "exact", head: true });
+  check(error);
+  return count ?? 0;
 }

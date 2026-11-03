@@ -156,3 +156,78 @@ export async function writeDraft(input: { topic: string; purpose: string; method
   };
   return manuscript;
 }
+
+// ── AI 분류 (PARA · 관련도 · 요약) ─────────────────────────────────────────
+
+const ClassifyResult = z.object({
+  para: z
+    .enum(["projects", "areas", "resources", "archives"])
+    .describe("PARA 분류"),
+  relevance: z
+    .enum(["1", "2", "3", "4", "5"])
+    .describe("내 연구 주제와의 관련도 (5가 가장 높음)"),
+  summary: z.string().describe("자료 내용 요약 2~3문장"),
+});
+
+const CLASSIFY_SYSTEM = `너는 대학원생의 논문 자료를 정리하는 연구 보조자다.
+자료 하나를 받아 PARA 방식으로 분류하고, 연구자의 논문 주제와 얼마나 관련 있는지 1~5등급으로 매기고, 짧게 요약한다.
+
+[PARA]
+- projects: 지금 쓰는 논문에 바로 인용·활용할 자료
+- areas: 연구 분야 전반에 꾸준히 필요한 배경 지식·이론
+- resources: 나중에 참고할 만한 일반 자료·방법론·도구
+- archives: 지금 논문과는 거의 관계없거나 오래되어 보관만 할 자료
+
+[관련도]
+5 = 논문 주제의 핵심 근거, 4 = 직접 관련, 3 = 부분적으로 관련, 2 = 배경 정도, 1 = 거의 무관
+
+[요약]
+- 학술적 문어체("~이다")로 2~3문장. 자료에 없는 내용·수치·저자는 지어내지 않는다.
+- 연구 주제가 비어 있으면 자료 자체의 학술적 가치로 판단한다.`;
+
+/** 너무 긴 자료는 앞부분만 보낸다 (비용 절약) */
+const MAX_CLASSIFY_CHARS = 20000;
+
+export async function classifySource(input: {
+  title: string;
+  type: string;
+  origin: string;
+  content: string;
+  research: { topic: string; keywords: string[] };
+}) {
+  const client = await getClient();
+  const content =
+    input.content.length > MAX_CLASSIFY_CHARS
+      ? `${input.content.slice(0, MAX_CLASSIFY_CHARS)}\n…(이하 생략)`
+      : input.content;
+  const response = await client.messages.parse({
+    model: AI_MODEL,
+    max_tokens: 4000,
+    system: CLASSIFY_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `[내 연구]
+주제: ${input.research.topic || "(아직 정하지 않음)"}
+키워드: ${input.research.keywords.join(", ") || "(없음)"}
+
+[자료]
+제목: ${input.title}
+유형: ${input.type}
+출처: ${input.origin || "(미확인)"}
+내용:
+${content || "(내용 없음)"}`,
+      },
+    ],
+    output_config: { format: zodOutputFormat(ClassifyResult) },
+  });
+
+  if (response.stop_reason === "refusal")
+    throw new Error("AI가 이 자료는 분류하지 않겠다고 했어요.");
+  if (!response.parsed_output) throw new Error("AI 답변을 읽지 못했어요. 다시 시도해 주세요.");
+  return {
+    para: response.parsed_output.para,
+    relevance: Number(response.parsed_output.relevance),
+    summary: response.parsed_output.summary,
+  };
+}
