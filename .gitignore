@@ -60,3 +60,6 @@ credentials*.json
 
 .vercel
 .env*
+
+# 옵시디언 자료 가져오기용 SQL (스크랩한 글 전문이 들어 있음 — 공개 저장소에 올리지 않음)
+/supabase/import/

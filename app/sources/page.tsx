@@ -44,7 +44,7 @@ async function SourcesContent() {
   const items: SourceListItem[] = sources.map(({ content, ...s }) => ({
     ...s,
     projectName: s.projectId ? (names.get(s.projectId) ?? null) : null,
-    excerpt: content.slice(0, 2000),
+    excerpt: content.slice(0, 600),
   }));
   return <SourcesList sources={items} />;
 }
