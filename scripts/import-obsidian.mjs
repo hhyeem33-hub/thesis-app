@@ -227,6 +227,55 @@ order by e.file;
   "utf8"
 );
 
+// 검증용: 온라인 노트가 원래 글과 정확히 같은지 (읽기만 함). 글자 수 + 지문(md5)으로 비교한다.
+// 일부만 들어간 노트는 "조각 경계(2만 자 단위, 예전 파일은 3만 자 단위)까지 원래와 같으면" 정상으로 본다.
+const md5 = (s) => createHash("md5").update(s, "utf8").digest("hex");
+const expectRows = [];
+const titleRows = [];
+for (const s of sources) {
+  const chars = Array.from(s.content);
+  const full = chars.length;
+  const cuts = new Set([full]);
+  for (const step of [PIECE_CHARS, 30_000]) for (let b = step; b < full; b += step) cuts.add(b);
+  titleRows.push(`('${s.id}'::uuid, ${dollar(s.title)}, ${full})`);
+  for (const b of [...cuts].sort((a, z) => a - z))
+    expectRows.push(`('${s.id}'::uuid, ${b}, '${md5(chars.slice(0, b).join(""))}')`);
+}
+writeFileSync(
+  path.join(outDir, "verify-notes.sql"),
+  `-- ✔ 노트 검증 (아무것도 바꾸지 않고 읽기만 합니다)
+-- 옵시디언에서 가져온 노트 ${sources.length}개를 원래 글과 글자 수·지문(md5)으로 비교합니다.
+-- '⚠️ 원래와 다름' 줄이 없으면, 잘못 바뀐 노트는 하나도 없는 것입니다.
+with notes (id, title, full_len) as (
+  values
+  ${titleRows.join(",\n  ")}
+),
+expected (id, len, hash) as (
+  values
+  ${expectRows.join(",\n  ")}
+),
+judged as (
+  select n.title,
+         case
+           when s.id is null then '아직 안 들어감'
+           when length(s.content) = n.full_len
+                and md5(s.content) = (select x.hash from expected x where x.id = n.id and x.len = n.full_len)
+             then '정확히 같음'
+           when exists (select 1 from expected x where x.id = n.id and x.len = length(s.content) and x.hash = md5(s.content))
+             then '중간까지 정상 (남은 part를 넣으면 채워짐)'
+           else '⚠️ 원래와 다름'
+         end as 상태
+  from notes n
+  left join public.sources s on s.id = n.id
+)
+select 상태, count(*) as 노트_수, left(string_agg(title, ' / ' order by title), 300) as 노트_제목_예시
+from judged
+group by 상태
+order by case 상태 when '⚠️ 원래와 다름' then 0 when '정확히 같음' then 2 else 1 end;
+`,
+  "utf8"
+);
+
 console.log(
   JSON.stringify(
     {
