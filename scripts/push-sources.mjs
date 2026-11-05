@@ -1,15 +1,20 @@
-// 내 컴퓨터 자료(data/sources.json)를 온라인 슈파베이스 sources 표에 넣는다: npm run db:push
+// 내 컴퓨터 자료(data/sources.json)를 온라인 슈파베이스 sources 표와 맞춘다.
+//   npm run db:push            → 확인만 (읽기만 하고 아무것도 바꾸지 않음)
+//   npm run db:push -- --apply → 실제로 넣고 고침
 //
 // - 키는 .env.local 의 SUPABASE_URL, SUPABASE_SECRET_KEY(또는 SUPABASE_SERVICE_ROLE_KEY)에서 읽는다.
 //   .env.local 은 .gitignore 에 있어서 깃허브에 올라가지 않는다. 키는 화면에 출력하지 않는다.
-// - 이미 온라인에 있는 자료는 건너뛴다 (중복 없음). 분류 결과 등 온라인 값은 덮어쓰지 않는다.
-// - SQL 파일을 일부만 실행해서 글이 중간까지만 들어간 자료는 나머지를 채운다.
+// - 온라인에 없는 자료는 새로 넣는다 (같은 id는 절대 두 번 들어가지 않음).
+// - 온라인 글이 원본과 다르면(붙여 넣기로 줄바꿈이 CR+LF로 바뀐 것, 중간까지만 들어간 것, 잘린 것)
+//   그 자료의 '본문(content)'만 원본으로 바꾼다. 분류 결과 등 다른 칸은 건드리지 않는다.
+// - 이 앱이 가져온 자료(id가 data/sources.json 에 있는 것)만 다룬다. 옵시디언 원본 노트는 읽지도 않는다.
 // - 프로젝트는 이름으로 찾아 연결한다 (온라인에 같은 이름의 프로젝트가 없으면 연결 없이 넣음).
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 const ROOT = process.cwd();
+const APPLY = process.argv.includes("--apply");
 try {
   process.loadEnvFile(path.join(ROOT, ".env.local"));
 } catch {
@@ -42,6 +47,17 @@ const fail = (what, error) => {
   process.exit(1);
 };
 
+async function readOnline() {
+  const map = new Map();
+  for (let from = 0; ; from += 100) {
+    const { data, error } = await db.from("sources").select("id, content").order("id").range(from, from + 99);
+    if (error) fail("온라인 자료 읽기", error);
+    for (const r of data) map.set(r.id, r.content);
+    if (data.length < 100) break;
+  }
+  return map;
+}
+
 // 온라인 프로젝트 이름 → id
 const { data: onlineProjects, error: pErr } = await db.from("projects").select("id, name");
 if (pErr) fail("온라인 프로젝트 읽기", pErr);
@@ -51,30 +67,37 @@ const projectFor = (localId) => {
   return (name && onlineProjectId.get(name)) || null;
 };
 
-// 온라인에 이미 있는 자료 (내용 길이 비교용)
-const online = new Map();
-for (let from = 0; ; from += 100) {
-  const { data, error } = await db.from("sources").select("id, content").range(from, from + 99);
-  if (error) fail("온라인 자료 읽기", error);
-  for (const r of data) online.set(r.id, r.content);
-  if (data.length < 100) break;
-}
-console.log(`온라인에 이미 있는 자료: ${online.size}개 · 내 컴퓨터 자료: ${local.length}개`);
+const online = await readOnline();
+console.log(`온라인 sources 표 전체: ${online.size}개 · 내 컴퓨터 자료: ${local.length}개`);
 
-const toInsert = local.filter((s) => !online.has(s.id));
-// SQL 파일을 중간까지만 실행해 글이 앞부분만 들어간 자료
-const toFill = local.filter((s) => {
+// 상태 나누기 (CR = 붙여 넣을 때 생긴 윈도우 줄바꿈 문자)
+const noCR = (s) => s.replace(/\r/g, "");
+const kinds = { 정확히_같음: [], 새로_넣을_것: [], 줄바꿈만_다름: [], 중간까지만_들어감: [], 원본과_다름: [] };
+for (const s of local) {
   const c = online.get(s.id);
-  return c !== undefined && c !== s.content && c.length < s.content.length && s.content.startsWith(c);
-});
-const different = local.filter((s) => {
-  const c = online.get(s.id);
-  return c !== undefined && c !== s.content && !s.content.startsWith(c);
-});
+  if (c === undefined) kinds.새로_넣을_것.push(s);
+  else if (c === s.content) kinds.정확히_같음.push(s);
+  else if (noCR(c) === s.content) kinds.줄바꿈만_다름.push(s);
+  else if (s.content.startsWith(noCR(c))) kinds.중간까지만_들어감.push(s);
+  else kinds.원본과_다름.push(s);
+}
+const counts = Object.fromEntries(Object.entries(kinds).map(([name, list]) => [name, list.length]));
+console.log("[지금 온라인 상태]", JSON.stringify(counts, null, 2));
+for (const s of kinds.원본과_다름) {
+  const c = noCR(online.get(s.id));
+  let i = 0;
+  while (i < c.length && c[i] === s.content[i]) i++;
+  console.log(`  ⚠️ '${s.title.slice(0, 40)}' 원본 ${s.content.length}자 · 온라인(CR 뺀) ${c.length}자 · ${i + 1}번째 글자부터 다름`);
+}
+
+if (!APPLY) {
+  console.log("확인만 했어요 (아무것도 바꾸지 않음). 고치려면: npm run db:push -- --apply");
+  process.exit(0);
+}
 
 let inserted = 0;
-for (let i = 0; i < toInsert.length; i += 10) {
-  const batch = toInsert.slice(i, i + 10).map((s) => ({
+for (let i = 0; i < kinds.새로_넣을_것.length; i += 10) {
+  const batch = kinds.새로_넣을_것.slice(i, i + 10).map((s) => ({
     id: s.id,
     project_id: projectFor(s.projectId),
     title: s.title,
@@ -89,38 +112,20 @@ for (let i = 0; i < toInsert.length; i += 10) {
   const { error } = await db.from("sources").upsert(batch, { onConflict: "id", ignoreDuplicates: true });
   if (error) fail(`${i + 1}~${i + batch.length}번째 넣기`, error);
   inserted += batch.length;
-  process.stdout.write(`\r넣는 중… ${inserted}/${toInsert.length}`);
 }
-if (toInsert.length) process.stdout.write("\n");
+console.log(`새로 넣음: ${inserted}개`);
 
-let filled = 0;
-for (const s of toFill) {
+const toFix = [...kinds.줄바꿈만_다름, ...kinds.중간까지만_들어감, ...kinds.원본과_다름];
+let fixed = 0;
+for (const s of toFix) {
+  // 이 자료 하나(eq id)의 본문만 바꾼다
   const { error } = await db.from("sources").update({ content: s.content }).eq("id", s.id);
-  if (error) fail(`'${s.title}' 나머지 글 채우기`, error);
-  filled++;
+  if (error) fail(`'${s.title}' 본문 고치기`, error);
+  fixed++;
 }
+console.log(`본문 고침: ${fixed}개`);
 
-// 확인: 다시 읽어서 내 컴퓨터 자료와 비교
-const after = new Map();
-for (let from = 0; ; from += 100) {
-  const { data, error } = await db.from("sources").select("id, content").range(from, from + 99);
-  if (error) fail("확인용 다시 읽기", error);
-  for (const r of data) after.set(r.id, r.content);
-  if (data.length < 100) break;
-}
+// 확인: 다시 읽어서 원본과 비교
+const after = await readOnline();
 const same = local.filter((s) => after.get(s.id) === s.content).length;
-
-console.log(
-  JSON.stringify(
-    {
-      새로_넣음: inserted,
-      중간까지만_있던_글_채움: filled,
-      이미_있어서_건너뜀: local.length - toInsert.length - toFill.length,
-      내용이_달라서_그대로_둠: different.map((s) => s.title),
-      확인_원본과_같은_자료: `${same}/${local.length}`,
-      온라인_전체_자료: after.size,
-    },
-    null,
-    2
-  )
-);
+console.log(`[확인] 원본과 정확히 같은 자료 ${same}/${local.length} · 온라인 sources 표 전체 ${after.size}개`);

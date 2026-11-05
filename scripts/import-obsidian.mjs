@@ -38,7 +38,7 @@ function readNote(rel) {
       const kv = line.match(/^([\w_]+):\s*(.*)$/);
       if (kv) fm[kv[1]] = kv[2].replace(/^"(.*)"$/, "$1").trim();
     }
-  const body = (m ? raw.slice(m[0].length) : raw).trim();
+  const body = (m ? raw.slice(m[0].length) : raw).replace(/\r\n?/g, "\n").trim();
   return { rel, fm, body, mtime: statSync(full).mtime };
 }
 
@@ -123,6 +123,11 @@ function dollar(s) {
   for (let i = 0; s.includes(tag); i++) tag = `$t${i}$`;
   return `${tag}${s}${tag}`;
 }
+/**
+ * 글 값. 메모장 → SQL Editor 로 붙여 넣으면 줄바꿈이 CR+LF로 바뀌어 글자 수가 늘어난다
+ * (원본 노트에는 CR이 없음). 그래서 넣을 때 CR(chr(13))을 빼서 원본과 똑같이 저장한다.
+ */
+const text = (s) => `replace(${dollar(s)}, chr(13), '')`;
 const projectSql = `(select id from public.projects where name = ${dollar(PROJECT_NAME)})`;
 
 const MAX_PER_FILE = 10;
@@ -142,7 +147,7 @@ function statements(s) {
     {
       after: Array.from(pieces[0]).length,
       sql: `insert into public.sources (id, project_id, title, type, origin, content, created_at, updated_at, classification)
-values ('${s.id}', ${projectSql}, ${dollar(s.title)}, '${s.type}', ${dollar(s.origin)}, ${dollar(pieces[0])}, '${s.createdAt}', '${s.updatedAt}', null)
+values ('${s.id}', ${projectSql}, ${text(s.title)}, '${s.type}', ${text(s.origin)}, ${text(pieces[0])}, '${s.createdAt}', '${s.updatedAt}', null)
 on conflict (id) do nothing;`,
     },
   ];
@@ -154,7 +159,7 @@ on conflict (id) do nothing;`,
     // (예전에 3만 자 조각으로 일부만 넣은 경우도 이어서 채워지고, 두 번 실행해도 그대로)
     out.push({
       after: done,
-      sql: `update public.sources set content = left(content, ${start}) || ${dollar(piece)}
+      sql: `update public.sources set content = left(content, ${start}) || ${text(piece)}
 where id = '${s.id}' and length(content) >= ${start} and length(content) < ${done};`,
     });
   }
@@ -263,6 +268,10 @@ judged as (
              then '정확히 같음'
            when exists (select 1 from expected x where x.id = n.id and x.len = length(s.content) and x.hash = md5(s.content))
              then '중간까지 정상 (남은 part를 넣으면 채워짐)'
+           when exists (select 1 from expected x where x.id = n.id
+                          and x.len = length(replace(s.content, chr(13), ''))
+                          and x.hash = md5(replace(s.content, chr(13), '')))
+             then '줄바꿈(CR)만 다름 (글은 같음)'
            else '⚠️ 원래와 다름'
          end as 상태
   from notes n
@@ -271,7 +280,7 @@ judged as (
 select 상태, count(*) as 노트_수, left(string_agg(title, ' / ' order by title), 300) as 노트_제목_예시
 from judged
 group by 상태
-order by case 상태 when '⚠️ 원래와 다름' then 0 when '정확히 같음' then 2 else 1 end;
+order by case 상태 when '⚠️ 원래와 다름' then 0 when '정확히 같음' then 3 when '줄바꿈(CR)만 다름 (글은 같음)' then 1 else 2 end;
 `,
   "utf8"
 );
