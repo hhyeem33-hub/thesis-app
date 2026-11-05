@@ -65,8 +65,13 @@ def has(p, tag: str) -> bool:
 
 class Template:
     def __init__(self, path: Path) -> None:
-        with zipfile.ZipFile(path) as z:
-            self.parts = {name: z.read(name) for name in z.namelist()}
+        try:
+            with zipfile.ZipFile(path) as z:
+                self.parts = {name: z.read(name) for name in z.namelist()}
+        except zipfile.BadZipFile:
+            raise SystemExit("hwpx 파일이 아니에요. 한글에서 '다른 이름으로 저장 → HWPX'로 저장한 파일을 올려 주세요.")
+        if "Contents/section0.xml" not in self.parts or "Contents/header.xml" not in self.parts:
+            raise SystemExit("hwpx 양식 안에 본문(section0.xml)이나 스타일(header.xml)이 없어요.")
         self.root = etree.fromstring(self.parts["Contents/section0.xml"])
         paras = list(self.root)
 
@@ -74,7 +79,10 @@ class Template:
             for p in paras:
                 if p.get("styleIDRef") == style and pred(p):
                     return p
-            raise SystemExit(f"양식에서 스타일 {style} 문단을 찾지 못했어요. assets/template.hwpx 를 확인해 주세요.")
+            raise SystemExit(
+                f"양식에서 스타일 {style} 문단을 찾지 못했어요. 외대 논문 양식(논문양식.hwpx)을 한글에서 열어 "
+                "글꼴·크기 등 스타일만 바꾼 파일을 올려 주세요 (제목·본문·장·절·각주·참고문헌 예시 문단이 있어야 해요)."
+            )
 
         filled = lambda p: text_of(p).strip() != ""
         empty = lambda p: not filled(p) and not has(p, "tbl") and not has(p, "footNote")
@@ -372,7 +380,7 @@ def output_path(project: str, title: str) -> Path:
     return path
 
 
-def verify(path: Path, m: dict) -> list[str]:
+def verify(path: Path, m: dict, template: Path = TEMPLATE) -> list[str]:
     """저장한 파일을 다시 열어 패키지·스키마·내용을 확인한다."""
     from hwpx import HwpxDocument
     from hwpx.tools.package_validator import validate_package
@@ -383,7 +391,7 @@ def verify(path: Path, m: dict) -> list[str]:
 
     problems = [f"패키지: {i.message}" for i in validate_package(str(path)).errors]
     # 한글이 만든 양식 파일에도 있는 스키마 경고(한글은 정상으로 여는 것)는 제외한다
-    problems += [f"스키마: {i}" for i in sorted(schema_issues(path) - schema_issues(TEMPLATE))]
+    problems += [f"스키마: {i}" for i in sorted(schema_issues(path) - schema_issues(template))]
     text = HwpxDocument.open(str(path)).text.plain()
     for needle in [m["title"], f"1. {m['chapters'][0]['title']}", "참고문헌"]:
         if needle not in text:
@@ -393,20 +401,29 @@ def verify(path: Path, m: dict) -> list[str]:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="한국외대 논문 양식 hwpx 생성")
-    ap.add_argument("manuscript", help="원고 JSON 파일")
+    ap.add_argument("manuscript", nargs="?", help="원고 JSON 파일")
+    ap.add_argument("--template", help="양식 hwpx (없으면 assets/template.hwpx = 외대 양식)")
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument("--project", help="앱의 프로젝트 이름 (드라이브 AI 작성글 폴더에 저장)")
-    group.add_argument("--out", help="저장할 hwpx 경로 (테스트용)")
+    group.add_argument("--out", help="저장할 hwpx 경로")
+    group.add_argument("--check-template", action="store_true", help="양식만 검사하고 끝냄")
     args = ap.parse_args()
+    template = Path(args.template) if args.template else TEMPLATE
+    if args.check_template:
+        Template(template)
+        print("양식 확인 완료")
+        return
 
+    if not args.manuscript:
+        sys.exit("원고 JSON 파일을 지정해 주세요.")
     m = json.loads(Path(args.manuscript).read_text(encoding="utf-8"))
     check_manuscript(m)
     path = Path(args.out) if args.out else output_path(args.project, m["title"])
     if args.out and path.exists():
         sys.exit(f"이미 같은 이름의 파일이 있어요: {path}")
 
-    write_package(build(m, Template(TEMPLATE)), path)
-    problems = verify(path, m)
+    write_package(build(m, Template(template)), path)
+    problems = verify(path, m, template)
     if problems:
         print("저장은 했지만 검사에서 문제가 발견됐어요:\n" + "\n".join(problems))
         sys.exit(1)

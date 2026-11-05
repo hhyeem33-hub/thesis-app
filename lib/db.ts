@@ -1,5 +1,15 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Classification, FolderStatus, Project, Research, Source } from "./types";
+import type {
+  AiDraftRecord,
+  Bib,
+  Classification,
+  DocVersion,
+  FolderStatus,
+  Project,
+  Research,
+  Source,
+  ThesisDoc,
+} from "./types";
 
 // ⚠️ 슈파베이스 비밀 키(service role)는 서버에서만 쓴다. 브라우저로 보내지 않는다.
 // 키는 버셀 환경 변수(내 컴퓨터에서는 .env.local, 깃허브 제외)에만 있다.
@@ -100,6 +110,7 @@ type SourceRecord = {
   created_at: string;
   updated_at: string;
   classification: Classification | null;
+  bib: Bib | null;
 };
 
 const toSource = (r: SourceRecord): Source => ({
@@ -112,6 +123,7 @@ const toSource = (r: SourceRecord): Source => ({
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   classification: r.classification,
+  bib: r.bib ?? null,
 });
 
 const fromSource = (s: Source) => ({
@@ -124,6 +136,7 @@ const fromSource = (s: Source) => ({
   created_at: s.createdAt,
   updated_at: s.updatedAt,
   classification: s.classification,
+  bib: s.bib ?? null,
 });
 
 export async function dbGetSources(): Promise<Source[]> {
@@ -167,4 +180,69 @@ export async function dbCountDrafts(): Promise<number> {
   const { count, error } = await db().from("ai_drafts").select("id", { count: "exact", head: true });
   check(error);
   return count ?? 0;
+}
+
+// ── 논문 원고 · 버전 기록 · AI 초안 목록 ───────────────────────────────────────
+
+export async function dbGetDoc(projectId: string): Promise<ThesisDoc | null> {
+  const { data, error } = await db().from("documents").select("doc").eq("project_id", projectId).maybeSingle();
+  check(error);
+  return (data?.doc as ThesisDoc) ?? null;
+}
+
+export async function dbSaveDoc(doc: ThesisDoc, version: DocVersion) {
+  const { error } = await db()
+    .from("documents")
+    .upsert({ project_id: doc.projectId, doc, updated_at: doc.updatedAt });
+  check(error);
+  const { error: vErr } = await db().from("document_versions").insert({
+    id: version.id,
+    project_id: version.projectId,
+    saved_at: version.savedAt,
+    chars: version.chars,
+    memo: version.memo,
+    doc: version.doc,
+  });
+  check(vErr);
+}
+
+/** 버전 목록 (원고 내용은 빼고 가볍게) */
+export async function dbListVersions(projectId: string): Promise<Omit<DocVersion, "doc">[]> {
+  const { data, error } = await db()
+    .from("document_versions")
+    .select("id, project_id, saved_at, chars, memo")
+    .eq("project_id", projectId)
+    .order("saved_at", { ascending: false });
+  check(error);
+  return (data as { id: string; project_id: string; saved_at: string; chars: number; memo: string }[]).map((r) => ({
+    id: r.id,
+    projectId: r.project_id,
+    savedAt: r.saved_at,
+    chars: r.chars,
+    memo: r.memo,
+  }));
+}
+
+export async function dbGetVersion(id: string): Promise<DocVersion | null> {
+  const { data, error } = await db().from("document_versions").select("*").eq("id", id).maybeSingle();
+  check(error);
+  if (!data) return null;
+  return { id: data.id, projectId: data.project_id, savedAt: data.saved_at, chars: data.chars, memo: data.memo, doc: data.doc };
+}
+
+export async function dbListDrafts(): Promise<AiDraftRecord[]> {
+  const { data, error } = await db()
+    .from("ai_drafts")
+    .select("id, project_id, topic, title, manuscript, created_at")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  check(error);
+  return (data as { id: string; project_id: string | null; topic: string; title: string; manuscript: AiDraftRecord["manuscript"]; created_at: string }[]).map((r) => ({
+    id: r.id,
+    projectId: r.project_id,
+    topic: r.topic,
+    title: r.title,
+    manuscript: r.manuscript,
+    createdAt: r.created_at,
+  }));
 }

@@ -52,6 +52,28 @@ create table if not exists public.research_settings (
   updated_at  timestamptz not null default now()
 );
 
+-- 자료 서지 정보 (참고문헌·각주용) { kind, authors, year, journal, volume, issue, pages, publisher, place, doi, kciId, category }  ※ 2026-11 추가
+alter table public.sources add column if not exists bib jsonb;
+
+-- 논문 원고 (프로젝트마다 하나)  ※ 2026-11 추가
+create table if not exists public.documents (
+  project_id  uuid primary key references public.projects (id) on delete cascade,
+  doc         jsonb not null,
+  updated_at  timestamptz not null default now()
+);
+
+-- 원고 히스토리 (저장할 때마다 한 줄)
+create table if not exists public.document_versions (
+  id          uuid primary key default gen_random_uuid(),
+  project_id  uuid not null references public.projects (id) on delete cascade,
+  saved_at    timestamptz not null default now(),
+  chars       int not null default 0,
+  memo        text not null default '',
+  doc         jsonb not null
+);
+
+create index if not exists document_versions_project_idx on public.document_versions (project_id, saved_at desc);
+
 -- 보안: RLS를 켜고 정책을 만들지 않는다.
 -- → 브라우저용 공개 키(anon)로는 읽기·쓰기가 모두 막히고,
 --   버셀 서버의 비밀 키(service role)만 접근할 수 있다.
@@ -59,3 +81,5 @@ alter table public.projects enable row level security;
 alter table public.ai_drafts enable row level security;
 alter table public.sources enable row level security;
 alter table public.research_settings enable row level security;
+alter table public.documents enable row level security;
+alter table public.document_versions enable row level security;

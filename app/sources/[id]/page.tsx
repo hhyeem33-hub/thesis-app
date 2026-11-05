@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, ExternalLink, TriangleAlert } from "lucide-react";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
+import { BibForm } from "@/components/bib-form";
 import { ClassifyButton } from "@/components/classify-button";
 import { DataError } from "@/components/data-error";
 import { GradeBadge } from "@/components/grade-badge";
@@ -56,6 +57,9 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-bold tracking-tight">{source.title}</h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            {source.bib?.category && (
+              <span className="rounded bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">{source.bib.category}</span>
+            )}
             <span>{SOURCE_TYPE_LABEL[source.type]}</span>
             <span aria-hidden>·</span>
             <span>프로젝트: {projectName ?? "연결 안 함"}</span>
@@ -122,6 +126,8 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
           )}
         </CardContent>
       </Card>
+
+      <BibForm source={source} />
 
       <Card>
         <CardHeader>

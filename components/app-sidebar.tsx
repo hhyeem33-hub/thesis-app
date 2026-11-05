@@ -8,6 +8,8 @@ import {
   FolderKanban,
   House,
   LayoutDashboard,
+  NotebookPen,
+  ScanSearch,
   Library,
   Settings,
   Sparkles,
@@ -33,6 +35,7 @@ const menuGroups = [
       { title: "홈", href: "/", icon: House },
       { title: "대시보드", href: "/dashboard", icon: LayoutDashboard },
       { title: "프로젝트", href: "/projects", icon: FolderKanban },
+      { title: "글쓰기", href: "/write", icon: NotebookPen },
     ],
   },
   {
@@ -40,6 +43,7 @@ const menuGroups = [
     items: [
       { title: "자료 수집", href: "/sources/new", icon: FilePlus2 },
       { title: "자료 관리", href: "/sources", icon: Library },
+      { title: "KCI 검색", href: "/kci", icon: ScanSearch },
       { title: "AI 분류", href: "/classify", icon: Sparkles },
     ],
   },

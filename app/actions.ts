@@ -21,6 +21,7 @@ import {
   type Manuscript,
 } from "@/lib/ai";
 import { dbAddDraft, ONLINE as ON_VERCEL } from "@/lib/db";
+import { recordLocalDraft } from "@/lib/documents";
 import {
   addProject,
   getProjects,
@@ -267,6 +268,10 @@ export async function generateDraft(input: {
     }
     return { ok: true, manuscript, saveNote: "온라인(버셀)에서는 hwpx 파일을 저장하지 않아요. ‘원고 복사’로 가져가거나, 내 컴퓨터에서 앱을 실행하면 hwpx로 저장돼요." };
   }
+  // 글쓰기 화면에서 불러올 수 있게 기록 (실패해도 초안은 보여 준다)
+  await recordLocalDraft({ projectId: project.id, topic, title: manuscript.title, manuscript }).catch((e) =>
+    console.error("AI 초안 기록 실패", e)
+  );
   if (!project.drive.ok)
     return { ok: true, manuscript, saveNote: "드라이브 폴더가 없어 hwpx로 저장하지 못했어요. 표에서 드라이브 ‘다시 시도’를 눌러 주세요." };
   try {

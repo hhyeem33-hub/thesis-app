@@ -48,6 +48,10 @@
 - `lib/db.ts`: 슈파베이스 (온라인 전용). `ONLINE` = `VERCEL` 환경 변수 있고 윈도우가 아님 → 프로젝트·AI 초안 기록을 슈파베이스(`projects`, `ai_drafts` 표, `supabase/schema.sql`)에 저장. 내 컴퓨터는 계속 `data/*.json` + 폴더 생성. 비밀 키(`SUPABASE_SERVICE_ROLE_KEY`)는 서버에서만 사용, RLS 켜고 정책 없음(공개 키로 접근 불가).
 - `vercel env pull`은 비밀 값을 `[SENSITIVE]`로만 받으므로 로컬에서는 슈파베이스를 쓰지 않는다. 표 변경은 슈파베이스 대시보드 SQL Editor에서 `supabase/schema.sql` 실행.
 - 자료 기능(옛 AI WIKI): `lib/sources.ts`(자료·연구 설정 저장: 로컬 `data/sources.json`·`data/research.json`, 온라인 `sources`·`research_settings` 표), `app/source-actions.ts`(자료 저장, AI 분류, 연구 설정), 화면 `/dashboard` `/sources` `/sources/new` `/sources/[id]` `/classify` `/research`. AI 분류는 `lib/ai.ts`의 `classifySource`(Haiku, PARA·관련도 1~5·요약).
+- 글쓰기(/write): `components/write-editor.tsx`. 원고 본문은 "# 장 / ## 절 / ### 목" 줄 + 빈 줄 문단, 각주 자리는 `[^id]`(번호는 본문 순서로 자동). 각주에 sourceId 가 있으면 참고문헌에 자동 포함. 규칙·변환은 `lib/bib.ts`(외대 양식: 국문 「논문」『학술지·책』, 국문→중문→영문, 모르는 칸 [보완 필요]). 저장마다 버전 기록(`lib/documents.ts`: 로컬 data/documents.json·document-versions.json·ai-drafts.json, 온라인 documents·document_versions 표). 되돌리기는 예전 내용을 새 버전으로 저장(기록 삭제 없음).
+- 자료 서지 정보: `Source.bib`(kind·authors·year·journal·volume·issue·pages·publisher·place·doi·kciId·category). 자료 상세의 `components/bib-form.tsx`에서 편집.
+- HWPX 내보내기: `app/api/hwpx/export` → `lib/hwpx.ts` → `make_hwpx.py --out --template`. 양식 업로드(`app/api/hwpx/templates`)는 `--check-template`로 검사 후 data/templates/ 에 저장. 외대 양식 구조(스타일 번호 35·37·38·39·43~45·49·50)가 있어야 함. 내 컴퓨터 전용.
+- KCI(/kci, `lib/kci.ts`): 키 없으면 KCI 검색 결과를 새 탭(POST 양식)으로 열고, 논문 주소(ART번호)를 붙이면 상세 페이지의 숨은 칸(hdnAuthor 등)에서 서지를 읽음. 키가 있으면 Open API(openApiSearch.kci, 신청 IP에서만 → 내 컴퓨터 전용). KCI OAI-PMH는 이 IP를 방화벽에서 차단해 쓰지 않음. 키는 data/kci-key.json 또는 KCI_API_KEY.
 - 사이드바의 현재 메뉴 표시(`usePathname`)는 `<Suspense>` 안에 있어야 한다 (`/sources/[id]`처럼 주소를 미리 모르는 화면 때문에 빌드 실패).
 - 이 Next.js는 `cacheComponents`가 켜져 있다: `export const dynamic` 사용 불가. 파일을 읽는 화면은 `<Suspense>` 안의 컴포넌트에서 `await connection()` 후 읽는다.
 
