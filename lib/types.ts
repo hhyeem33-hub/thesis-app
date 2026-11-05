@@ -89,9 +89,92 @@ export type Source = {
   createdAt: string;
   updatedAt: string;
   classification: Classification | null;
+  /** 서지 정보 (없으면 null) */
+  bib?: Bib | null;
 };
 
 export type Research = {
   topic: string;
   keywords: string[];
+};
+
+// ── 서지 정보 · 논문 원고 · 히스토리 ──────────────────────────────────────────
+
+/** 자료의 서지 정보 (참고문헌·각주에 쓰임). 모르는 칸은 빈 문자열 → [보완 필요] */
+export type Bib = {
+  kind: "article" | "book" | "web";
+  /** 저자. 여러 명이면 쉼표로 (예: 홍길동, 김철수) */
+  authors: string;
+  year: string;
+  /** 학술지명 (논문) */
+  journal: string;
+  volume: string;
+  issue: string;
+  pages: string;
+  /** 출판사·발행기관 */
+  publisher: string;
+  /** 출판지 (책) */
+  place: string;
+  doi: string;
+  /** KCI 논문 번호 (ART…) */
+  kciId: string;
+  /** 자료 분류 표시 (예: 선행연구) */
+  category: string;
+};
+
+export type Footnote = {
+  /** 본문의 [^id] 표시와 짝 */
+  id: string;
+  text: string;
+  /** 라이브러리 자료를 출처로 쓴 경우 */
+  sourceId: string | null;
+};
+
+/** 프로젝트 하나의 논문 원고 */
+export type ThesisDoc = {
+  projectId: string;
+  title: string;
+  author: string;
+  affiliation: string;
+  /** "# 장", "## 절", "### 목" 제목 줄 + 빈 줄로 나눈 문단. 각주 자리는 [^id] */
+  body: string;
+  footnotes: Footnote[];
+  updatedAt: string;
+};
+
+export type DocVersion = {
+  id: string;
+  projectId: string;
+  savedAt: string;
+  /** 본문 글자 수 (각주 표시 제외) */
+  chars: number;
+  memo: string;
+  doc: ThesisDoc;
+};
+
+/** 글쓰기 화면에서 불러올 AI 초안 */
+export type AiDraftRecord = {
+  id: string;
+  projectId: string | null;
+  topic: string;
+  title: string;
+  createdAt: string;
+  manuscript: import("./ai").Manuscript;
+};
+
+/** KCI에서 가져온 논문 정보 */
+export type KciArticle = {
+  kciId: string;
+  title: string;
+  authors: string;
+  journal: string;
+  year: string;
+  volume: string;
+  issue: string;
+  pages: string;
+  publisher: string;
+  doi: string;
+  keywords: string;
+  abstract: string;
+  url: string;
 };
