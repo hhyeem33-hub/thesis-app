@@ -109,9 +109,9 @@ writeFileSync(localFile, JSON.stringify([...local, ...added], null, 2) + "\n", "
 
 // ── 온라인: 슈파베이스 SQL Editor 에서 실행할 파일 ──
 // SQL Editor는 너무 큰 쿼리를 거부한다 ("Query is too large"). 그래서
-// - 파일 하나에 자료 최대 20개, 크기 최대 약 150KB
-// - 아주 긴 글은 3만 자씩 잘라서, 첫 조각은 insert, 나머지는 update로 이어 붙인다.
-//   이어 붙이기는 "지금까지 들어간 글자 수가 딱 맞을 때만" 해서 두 번 실행해도 중복되지 않는다.
+// - 파일 하나(part-NN.sql)에 노트 최대 10개, 크기 최대 약 100KB (150KB도 거부된 적이 있어 여유 있게)
+// - 아주 긴 글은 2만 자씩 잘라서, 첫 조각은 insert, 나머지는 update로 이어 붙인다.
+//   이어 붙이기는 "글자 수가 이 조각의 시작~끝 사이일 때만" 해서 두 번 실행해도 중복되지 않는다.
 //   (그래서 파일은 번호 순서대로 실행해야 한다. 순서가 꼬였으면 처음부터 다시 실행하면 채워진다)
 const outDir = path.join(ROOT, "supabase", "import");
 // 폴더는 지우지 않고(메모장 등이 열고 있으면 실패하므로) 예전 .sql 파일만 지운다
@@ -125,9 +125,9 @@ function dollar(s) {
 }
 const projectSql = `(select id from public.projects where name = ${dollar(PROJECT_NAME)})`;
 
-const MAX_PER_FILE = 20;
-const MAX_FILE_BYTES = 150_000;
-const PIECE_CHARS = 30_000; // 한글 3만 자 ≈ 90KB
+const MAX_PER_FILE = 10;
+const MAX_FILE_BYTES = 100_000;
+const PIECE_CHARS = 20_000; // 한글 2만 자 ≈ 60KB
 
 /**
  * 자료 하나 → SQL 문장 여러 개. after = 그 문장까지 실행했을 때 글자 수
@@ -148,11 +148,14 @@ on conflict (id) do nothing;`,
   ];
   let done = Array.from(pieces[0]).length;
   for (const piece of pieces.slice(1)) {
+    const start = done;
     done += Array.from(piece).length;
+    // 글이 이 조각의 시작~끝 사이까지만 들어가 있으면: 시작까지 남기고 이 조각을 붙인다.
+    // (예전에 3만 자 조각으로 일부만 넣은 경우도 이어서 채워지고, 두 번 실행해도 그대로)
     out.push({
       after: done,
-      sql: `update public.sources set content = content || ${dollar(piece)}
-where id = '${s.id}' and length(content) = ${done - Array.from(piece).length};`,
+      sql: `update public.sources set content = left(content, ${start}) || ${dollar(piece)}
+where id = '${s.id}' and length(content) >= ${start} and length(content) < ${done};`,
     });
   }
   return out;
@@ -187,7 +190,7 @@ files.forEach((f, i) => {
   // 머리말 3줄 + 본문 + 빈 줄 + 끝 표시 1줄 → 붙여 넣은 뒤 에디터의 마지막 줄 번호와 같아야 한다
   const lines = 3 + body.split("\n").length + 2;
   writeFileSync(
-    path.join(outDir, `${pad(i)}-sources.sql`),
+    path.join(outDir, `part-${pad(i)}.sql`),
     `-- ▶ ${pad(i)}번 파일 시작 (${i + 1}/${files.length}) · 새 자료 ${f.items}개${f.stmts.length > f.items ? " + 긴 글 이어 붙이기" : ""} · 전체 ${lines}줄\n` +
       "-- 번호 순서대로 실행하세요. 여러 번 실행해도 중복으로 들어가지 않습니다.\n" +
       "-- 에디터를 비운 뒤 이 파일만 붙여 넣으세요. 맨 아래에 '■ 파일 끝' 줄이 보여야 합니다.\n" +
@@ -201,7 +204,7 @@ const biggest = Math.max(...files.map((f) => f.bytes));
 // 확인용: 슈파베이스에 어느 파일까지 다 들어갔는지 보여 주는 작은 쿼리 (글 내용 없이 id와 글자 수만)
 const expectedRows = files.flatMap((f, i) => [...f.done].map(([id, len]) => `('${pad(i)}', '${id}'::uuid, ${len})`));
 writeFileSync(
-  path.join(outDir, "00-check.sql"),
+  path.join(outDir, "check-progress.sql"),
   `-- ✔ 진행 상황 확인 (아무것도 바꾸지 않고 읽기만 합니다)
 -- 결과 표에서 '상태'가 '완료'가 아닌 첫 번째 파일부터 다시 실행하면 됩니다.
 with expected (file, id, len) as (
@@ -235,7 +238,7 @@ console.log(
       내컴퓨터_이미_있어서_건너뜀: sources.length - added.length,
       온라인_SQL_파일_수: files.length,
       가장_큰_파일_KB: Math.round(biggest / 1000),
-      온라인_SQL_파일: files.map((f, i) => `${pad(i)}-sources.sql (새 자료 ${f.items}개, ${Math.round(f.bytes / 1000)}KB)`),
+      온라인_SQL_파일: files.map((f, i) => `part-${pad(i)}.sql (새 자료 ${f.items}개, ${Math.round(f.bytes / 1000)}KB)`),
     },
     null,
     2
