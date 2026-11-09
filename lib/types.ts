@@ -70,12 +70,61 @@ export const PARA_LABEL: Record<Para, string> = {
   archives: "Archives",
 };
 
+export const CONFIDENCE = ["높음", "중간", "낮음"] as const;
+export type Confidence = (typeof CONFIDENCE)[number];
+
+/** 연구자 확정 상태: 채택 · 보류 · 제외 (null = 아직 정하지 않음) */
+export const DECISIONS = ["adopted", "held", "excluded"] as const;
+export type DecisionStatus = (typeof DECISIONS)[number];
+export const DECISION_LABEL: Record<DecisionStatus, string> = { adopted: "채택", held: "보류", excluded: "제외" };
+
+export type Decision = {
+  status: DecisionStatus | null;
+  /** 최종 토픽 (비우면 미분류) */
+  finalTopic: string;
+  finalKeywords: string[];
+  /** 내 관점 메모 */
+  note: string;
+  decidedAt: string;
+};
+
+export type ClassificationLog = { at: string; who: "AI" | "연구자"; what: string };
+
+/** AI 판단 (+ 연구자 확정). sources.classification 칸에 함께 저장 */
 export type Classification = {
   para: Para;
-  /** 내 연구 주제와의 관련도 1~5 */
+  /** 내 연구와의 관련도 1~5 */
   relevance: number;
   summary: string;
   classifiedAt: string;
+  /** 제안 토픽 */
+  topic?: string;
+  /** 관련 키워드 */
+  keywords?: string[];
+  /** 분류 근거 */
+  reason?: string;
+  confidence?: Confidence;
+  /** 판단에 쓴 프로젝트 (연구 설정 기준) */
+  basisProjectId?: string | null;
+  decision?: Decision;
+  /** 분류 수정 기록 (최근 30개) */
+  log?: ClassificationLog[];
+};
+
+/** 프로젝트별 연구 설정 (AI 분류·AI 초안의 기준) */
+export type ProjectResearch = {
+  purpose: string;
+  keywords: string[];
+  perspective: string;
+  /** 한 줄에 하나 */
+  questions: string[];
+  /** 목차 (/ 로 구분해 입력) */
+  outline: string[];
+  updatedAt: string;
+};
+export type ProjectResearchRecord = ProjectResearch & {
+  /** 수정 이력 (최근 50개, 바뀐 칸과 그때 값) */
+  history: { at: string; changed: string[]; snapshot: ProjectResearch }[];
 };
 
 export type Source = {

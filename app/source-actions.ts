@@ -3,9 +3,18 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { aiErrorMessage, classifySource } from "@/lib/ai";
-import { getResearch, getSource, getSources, saveResearch, saveSource } from "@/lib/sources";
+import { getSource, getSources, saveResearch, saveSource } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
-import { SOURCE_TYPES, type ActionResult, type Source, type SourceType } from "@/lib/types";
+import { researchBasis, saveProjectResearch } from "@/lib/research";
+import {
+  DECISIONS,
+  SOURCE_TYPES,
+  type ActionResult,
+  type Classification,
+  type Decision,
+  type Source,
+  type SourceType,
+} from "@/lib/types";
 
 const MAX_TITLE = 200;
 const MAX_ORIGIN = 1000;
@@ -59,32 +68,122 @@ export async function addSource(input: {
   }
 }
 
-/** 자료 하나를 AI로 분류해 PARA·관련도·요약을 저장한다 */
-export async function classifySourceAction(id: string): Promise<ActionResult> {
+/** 판단 기록 한 줄 추가 (최근 30개) */
+function withLog(c: Classification, who: "AI" | "연구자", what: string): Classification {
+  return { ...c, log: [{ at: new Date().toISOString(), who, what }, ...(c.log ?? [])].slice(0, 30) };
+}
+
+/** AI 판단이 아직 없는 자료에 연구자가 먼저 결정할 때 쓰는 빈 판단 (관련도 0 = AI 미판단) */
+function blankClassification(): Classification {
+  return { para: "resources", relevance: 0, summary: "", classifiedAt: "" };
+}
+
+/**
+ * 자료 하나를 AI가 판단한다: 관련도·제안 토픽·키워드·근거·신뢰도 (프로젝트 연구 설정 기준).
+ * 연구자의 확정 분류(decision)와 기록(log)은 그대로 둔다.
+ */
+export async function classifySourceAction(id: string): Promise<ActionResult & { relevance?: number }> {
   try {
     const source = await getSource(id);
     if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
-    const result = await classifySource({ ...source, research: await getResearch() });
+    const basis = await researchBasis(source.projectId);
+    const result = await classifySource({ ...source, research: basis });
     const now = new Date().toISOString();
-    await saveSource({ ...source, updatedAt: now, classification: { ...result, classifiedAt: now } });
+    const prev = source.classification ?? blankClassification();
+    const next = withLog(
+      { ...prev, ...result, classifiedAt: now, basisProjectId: source.projectId },
+      "AI",
+      `${result.relevance}등급 · 토픽 ‘${result.topic}’ · 신뢰도 ${result.confidence}`
+    );
+    await saveSource({ ...source, updatedAt: now, classification: next });
     refresh(id);
-    return { ok: true };
+    return { ok: true, relevance: result.relevance };
   } catch (e) {
     return { ok: false, error: aiErrorMessage(e) };
   }
 }
 
-/** 아직 분류하지 않은 자료를 차례로 분류한다 (한 번에 최대 10개) */
+/** 한꺼번에 분류할 자료 번호 (all=false 면 아직 AI 판단이 없는 것만) */
+export async function classifyTargets(all: boolean): Promise<string[]> {
+  const sources = await getSources();
+  return sources.filter((s) => all || !s.classification || !s.classification.relevance).map((s) => s.id);
+}
+
+/** 예전 버튼용: 미분류를 10개씩 */
 export async function classifyPending(): Promise<ActionResult & { done?: number; left?: number }> {
-  const pending = (await getSources()).filter((s) => !s.classification);
-  const batch = pending.slice(0, 10);
+  const pending = await classifyTargets(false);
   let done = 0;
-  for (const s of batch) {
-    const r = await classifySourceAction(s.id);
+  for (const id of pending.slice(0, 10)) {
+    const r = await classifySourceAction(id);
     if (!r.ok) return { ok: false, error: `${done}개 분류 후 멈췄어요: ${r.error}` };
     done++;
   }
   return { ok: true, done, left: pending.length - done };
+}
+
+/** 연구자 확정 분류 바꾸기 */
+export async function decideSource(
+  id: string,
+  patch: Partial<Pick<Decision, "status" | "finalTopic" | "finalKeywords" | "note">>,
+  what: string
+): Promise<ActionResult & { classification?: Classification }> {
+  try {
+    const source = await getSource(id);
+    if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
+    const c = source.classification ?? blankClassification();
+    const prev: Decision = c.decision ?? { status: null, finalTopic: "", finalKeywords: [], note: "", decidedAt: "" };
+    if (patch.status !== undefined && patch.status !== null && !DECISIONS.includes(patch.status))
+      return { ok: false, error: "잘못된 상태예요." };
+    const decision: Decision = {
+      ...prev,
+      ...patch,
+      finalTopic: (patch.finalTopic ?? prev.finalTopic).trim().slice(0, 40),
+      finalKeywords: (patch.finalKeywords ?? prev.finalKeywords).map((k) => k.trim()).filter(Boolean).slice(0, 12),
+      note: (patch.note ?? prev.note).slice(0, 3000),
+      decidedAt: new Date().toISOString(),
+    };
+    const next = withLog({ ...c, decision }, "연구자", what);
+    await saveSource({ ...source, updatedAt: decision.decidedAt, classification: next });
+    refresh(id);
+    return { ok: true, classification: next };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** 자세히 창에 필요한 것: 자료 + 그 프로젝트의 목차(토픽 고르기용) */
+export async function sourceForReview(id: string) {
+  const source = await getSource(id);
+  if (!source) return null;
+  const basis = await researchBasis(source.projectId);
+  return {
+    source: { ...source, content: source.content.slice(0, 3000) },
+    outline: basis.outline,
+    keywords: basis.keywords,
+  };
+}
+
+/** 프로젝트별 연구 설정 저장 (+ 수정 이력) */
+export async function updateProjectResearch(
+  projectId: string,
+  input: { purpose: string; keywords: string; perspective: string; questions: string; outline: string }
+): Promise<ActionResult & { changed?: string[] }> {
+  if (!(await getProjects()).some((p) => p.id === projectId)) return { ok: false, error: "프로젝트를 찾을 수 없어요." };
+  const uniq = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))];
+  try {
+    const { changed } = await saveProjectResearch(projectId, {
+      purpose: input.purpose.trim().slice(0, 1000),
+      keywords: uniq(input.keywords.split(/[,，\n]/).map((k) => k.replace(/^#/, "").slice(0, 40))).slice(0, 30),
+      perspective: input.perspective.trim().slice(0, 2000),
+      questions: uniq(input.questions.split("\n").map((q) => q.slice(0, 300))).slice(0, 20),
+      outline: uniq(input.outline.split(/[/\n]/).map((o) => o.slice(0, 60))).slice(0, 40),
+    });
+    revalidatePath("/research");
+    revalidatePath("/sources");
+    return { ok: true, changed };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function updateResearch(input: {

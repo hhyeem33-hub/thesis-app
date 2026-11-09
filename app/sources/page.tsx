@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/page-header";
 import { ProjectsSkeleton } from "@/components/page-skeletons";
 import { SourcesList, type SourceListItem } from "@/components/sources-list";
 import { buttonVariants } from "@/components/ui/button";
+import { getAiKeyStatus } from "@/lib/ai";
 import { getSources } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
 
@@ -34,11 +35,11 @@ async function SourcesContent() {
   await connection();
   let data;
   try {
-    data = await Promise.all([getSources(), getProjects()]);
+    data = await Promise.all([getSources(), getProjects(), getAiKeyStatus()]);
   } catch (e) {
     return <DataError error={e} />;
   }
-  const [sources, projects] = data;
+  const [sources, projects, keyStatus] = data;
   const names = new Map(projects.map((p) => [p.id, p.name]));
   // 본문 전체 대신 검색용 앞부분만 화면으로 보낸다
   const items: SourceListItem[] = sources.map(({ content, ...s }) => ({
@@ -46,5 +47,5 @@ async function SourcesContent() {
     projectName: s.projectId ? (names.get(s.projectId) ?? null) : null,
     excerpt: content.slice(0, 600),
   }));
-  return <SourcesList sources={items} />;
+  return <SourcesList sources={items} hasKey={keyStatus.source !== "none"} />;
 }

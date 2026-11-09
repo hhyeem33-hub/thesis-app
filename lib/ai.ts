@@ -124,7 +124,7 @@ const SYSTEM = `너는 한국외국어대학교 대학원생의 학위논문 초
 - 참고문헌은 형식 예시만 쓰고 각 항목 앞에 "[보완 필요]"를 붙인다. 예: "[보완 필요] 저자명(연도), 「논문 제목」, 『학술지명』 권(호)".
 - 아직 연구를 하지 않았으므로 결과는 "~할 것으로 예상된다"처럼 예상으로만 쓴다.`;
 
-export async function writeDraft(input: { topic: string; purpose: string; method: string }) {
+export async function writeDraft(input: { topic: string; purpose: string; method: string; research?: ResearchBasis }) {
   const client = await getClient();
   const response = await client.messages.parse({
     model: AI_MODEL,
@@ -137,7 +137,12 @@ export async function writeDraft(input: { topic: string; purpose: string; method
 
 주제: ${input.topic}
 연구 목적: ${input.purpose || "(적지 않음 — 주제에 맞게 제안)"}
-연구 방법: ${input.method || "(적지 않음 — 주제에 맞게 제안)"}`,
+연구 방법: ${input.method || "(적지 않음 — 주제에 맞게 제안)"}${
+          input.research ? `
+
+[프로젝트 연구 설정 — 이 기준에 맞춰 쓴다. 목차가 있으면 그 순서를 따른다]
+${basisText(input.research)}` : ""
+        }`,
       },
     ],
     output_config: { format: zodOutputFormat(Manuscript) },
@@ -157,59 +162,82 @@ export async function writeDraft(input: { topic: string; purpose: string; method
   return manuscript;
 }
 
-// ── AI 분류 (PARA · 관련도 · 요약) ─────────────────────────────────────────
+// ── AI 판단 (관련도 · 제안 토픽 · 키워드 · 근거 · 신뢰도 · PARA · 요약) ──────────
+
+/** AI 판단·초안의 기준이 되는 연구 설정 */
+export type ResearchBasis = {
+  purpose: string;
+  keywords: string[];
+  perspective: string;
+  questions: string[];
+  outline: string[];
+};
+
+export function basisText(r: ResearchBasis) {
+  return [
+    `연구 목적: ${r.purpose || "(아직 정하지 않음)"}`,
+    `핵심 키워드: ${r.keywords.join(", ") || "(없음)"}`,
+    r.perspective && `나의 관점: ${r.perspective}`,
+    r.questions.length && `연구 질문:\n${r.questions.map((q, i) => `  ${i + 1}. ${q}`).join("\n")}`,
+    r.outline.length && `목차: ${r.outline.join(" / ")}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 const ClassifyResult = z.object({
-  para: z
-    .enum(["projects", "areas", "resources", "archives"])
-    .describe("PARA 분류"),
-  relevance: z
-    .enum(["1", "2", "3", "4", "5"])
-    .describe("내 연구 주제와의 관련도 (5가 가장 높음)"),
+  relevance: z.enum(["1", "2", "3", "4", "5"]).describe("연구와의 관련도 (5가 가장 높음)"),
+  topic: z.string().describe("제안 토픽: 목차 항목 중 가장 맞는 것, 없으면 짧은 주제명 (15자 이내)"),
+  keywords: z.array(z.string()).describe("관련 키워드 3~6개 (핵심 키워드와 겹치는 것 우선)"),
+  reason: z.string().describe("분류 근거 1~2문장: 왜 이 등급·토픽인지"),
+  confidence: z.enum(["높음", "중간", "낮음"]).describe("판단 신뢰도 (내용이 짧거나 애매하면 낮음)"),
+  para: z.enum(["projects", "areas", "resources", "archives"]).describe("PARA 분류"),
   summary: z.string().describe("자료 내용 요약 2~3문장"),
 });
 
 const CLASSIFY_SYSTEM = `너는 대학원생의 논문 자료를 정리하는 연구 보조자다.
-자료 하나를 받아 PARA 방식으로 분류하고, 연구자의 논문 주제와 얼마나 관련 있는지 1~5등급으로 매기고, 짧게 요약한다.
-
-[PARA]
-- projects: 지금 쓰는 논문에 바로 인용·활용할 자료
-- areas: 연구 분야 전반에 꾸준히 필요한 배경 지식·이론
-- resources: 나중에 참고할 만한 일반 자료·방법론·도구
-- archives: 지금 논문과는 거의 관계없거나 오래되어 보관만 할 자료
+연구자의 연구 설정을 기준으로 자료 하나를 판단한다. 최종 결정은 연구자가 하므로, 판단 근거를 분명히 적는다.
 
 [관련도]
-5 = 논문 주제의 핵심 근거, 4 = 직접 관련, 3 = 부분적으로 관련, 2 = 배경 정도, 1 = 거의 무관
+5 = 연구 질문에 바로 답하는 핵심 근거, 4 = 직접 관련, 3 = 부분적으로 관련, 2 = 배경 정도, 1 = 거의 무관
 
-[요약]
-- 학술적 문어체("~이다")로 2~3문장. 자료에 없는 내용·수치·저자는 지어내지 않는다.
-- 연구 주제가 비어 있으면 자료 자체의 학술적 가치로 판단한다.`;
+[제안 토픽]
+- 연구 설정의 목차 항목 중 이 자료가 들어갈 곳을 고른다. 목차가 없거나 맞는 곳이 없으면 짧은 주제명을 붙인다.
 
-/** 너무 긴 자료는 앞부분만 보낸다 (비용 절약) */
-const MAX_CLASSIFY_CHARS = 20000;
+[신뢰도]
+- 높음: 제목과 내용이 분명해 판단이 확실함 / 중간: 대체로 맞지만 일부 추측 / 낮음: 내용이 짧거나 애매함
+
+[PARA]
+projects 지금 논문에 바로 쓸 자료 · areas 연구 분야 배경 지식·이론 · resources 나중에 참고할 일반 자료·방법론 · archives 관계 적어 보관만 할 자료
+
+[원칙]
+- 자료에 없는 내용·수치·저자는 지어내지 않는다. 학술적 문어체("~이다")로 쓴다.
+- 앞부분만 받았을 수 있으므로, 확실하지 않으면 신뢰도를 낮춘다.`;
+
+/** 비용을 아끼려고 제목 + 앞부분만 보낸다 */
+const CLASSIFY_CHARS = 2000;
 
 export async function classifySource(input: {
   title: string;
   type: string;
   origin: string;
   content: string;
-  research: { topic: string; keywords: string[] };
+  research: ResearchBasis;
 }) {
   const client = await getClient();
   const content =
-    input.content.length > MAX_CLASSIFY_CHARS
-      ? `${input.content.slice(0, MAX_CLASSIFY_CHARS)}\n…(이하 생략)`
-      : input.content;
+    input.content.length > CLASSIFY_CHARS ? `${input.content.slice(0, CLASSIFY_CHARS)}
+…(앞부분만)` : input.content;
   const response = await client.messages.parse({
     model: AI_MODEL,
-    max_tokens: 4000,
+    max_tokens: 2000,
+    output_config: { effort: "low", format: zodOutputFormat(ClassifyResult) },
     system: CLASSIFY_SYSTEM,
     messages: [
       {
         role: "user",
-        content: `[내 연구]
-주제: ${input.research.topic || "(아직 정하지 않음)"}
-키워드: ${input.research.keywords.join(", ") || "(없음)"}
+        content: `[연구 설정]
+${basisText(input.research)}
 
 [자료]
 제목: ${input.title}
@@ -219,15 +247,18 @@ export async function classifySource(input: {
 ${content || "(내용 없음)"}`,
       },
     ],
-    output_config: { format: zodOutputFormat(ClassifyResult) },
   });
 
-  if (response.stop_reason === "refusal")
-    throw new Error("AI가 이 자료는 분류하지 않겠다고 했어요.");
+  if (response.stop_reason === "refusal") throw new Error("AI가 이 자료는 분류하지 않겠다고 했어요.");
   if (!response.parsed_output) throw new Error("AI 답변을 읽지 못했어요. 다시 시도해 주세요.");
+  const o = response.parsed_output;
   return {
-    para: response.parsed_output.para,
-    relevance: Number(response.parsed_output.relevance),
-    summary: response.parsed_output.summary,
+    relevance: Number(o.relevance),
+    topic: o.topic.trim().slice(0, 40),
+    keywords: o.keywords.map((k) => k.trim()).filter(Boolean).slice(0, 8),
+    reason: o.reason.trim(),
+    confidence: o.confidence,
+    para: o.para,
+    summary: o.summary.trim(),
   };
 }

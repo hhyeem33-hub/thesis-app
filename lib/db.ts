@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   AiDraftRecord,
+  ProjectResearchRecord,
   Bib,
   Classification,
   DocVersion,
@@ -191,9 +192,13 @@ export async function dbGetDoc(projectId: string): Promise<ThesisDoc | null> {
 }
 
 export async function dbSaveDoc(doc: ThesisDoc, version: DocVersion) {
+  // 같은 줄에 함께 저장된 프로젝트 연구 설정(research)은 그대로 둔다
+  const { data: prev, error: rErr } = await db().from("documents").select("doc").eq("project_id", doc.projectId).maybeSingle();
+  check(rErr);
+  const research = (prev?.doc as { research?: unknown } | undefined)?.research;
   const { error } = await db()
     .from("documents")
-    .upsert({ project_id: doc.projectId, doc, updated_at: doc.updatedAt });
+    .upsert({ project_id: doc.projectId, doc: research ? { ...doc, research } : doc, updated_at: doc.updatedAt });
   check(error);
   const { error: vErr } = await db().from("document_versions").insert({
     id: version.id,
@@ -245,4 +250,22 @@ export async function dbListDrafts(): Promise<AiDraftRecord[]> {
     manuscript: r.manuscript,
     createdAt: r.created_at,
   }));
+}
+
+// ── 프로젝트별 연구 설정 (documents.doc.research 에 함께 저장 — 새 표 없이) ──────
+
+export async function dbGetProjectResearch(projectId: string): Promise<ProjectResearchRecord | null> {
+  const { data, error } = await db().from("documents").select("doc").eq("project_id", projectId).maybeSingle();
+  check(error);
+  return ((data?.doc as { research?: ProjectResearchRecord } | undefined)?.research as ProjectResearchRecord) ?? null;
+}
+
+export async function dbSaveProjectResearch(projectId: string, research: ProjectResearchRecord, emptyDoc: ThesisDoc) {
+  const { data, error } = await db().from("documents").select("doc").eq("project_id", projectId).maybeSingle();
+  check(error);
+  const doc = { ...((data?.doc as ThesisDoc | undefined) ?? emptyDoc), research };
+  const { error: uErr } = await db()
+    .from("documents")
+    .upsert({ project_id: projectId, doc, updated_at: new Date().toISOString() });
+  check(uErr);
 }

@@ -67,7 +67,7 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
             <span>수정 {dateFormat.format(new Date(source.updatedAt))}</span>
           </div>
         </div>
-        <ClassifyButton sourceId={source.id} again={!!c} />
+        <ClassifyButton sourceId={source.id} again={!!c?.relevance} />
       </div>
 
       <Card>
@@ -75,7 +75,7 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
           <CardTitle>AI 분류</CardTitle>
         </CardHeader>
         <CardContent>
-          {c ? (
+          {c?.relevance ? (
             <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[6rem_1fr]">
               <dt className="text-muted-foreground">PARA</dt>
               <dd className="font-medium">{PARA_LABEL[c.para]}</dd>

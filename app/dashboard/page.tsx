@@ -7,6 +7,7 @@ import { GradeBadge } from "@/components/grade-badge";
 import { PageHeader } from "@/components/page-header";
 import { ProjectsSkeleton } from "@/components/page-skeletons";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatReference, NEED } from "@/lib/bib";
 import { countAiOutputs, getResearch, getSources } from "@/lib/sources";
 import { PARA, PARA_LABEL, SOURCE_TYPES, SOURCE_TYPE_LABEL } from "@/lib/types";
 
@@ -64,7 +65,23 @@ async function DashboardContent() {
   }
   const [sources, research, aiCount] = data;
 
-  const classified = sources.filter((s) => s.classification);
+  // 관련도 0 = 연구자가 먼저 결정했지만 AI 판단은 아직 없는 자료
+  const classified = sources.filter((s) => (s.classification?.relevance ?? 0) > 0);
+  const status = (st: string) => sources.filter((s) => s.classification?.decision?.status === st).length;
+  const adopted = status("adopted");
+  const held = status("held");
+  const excluded = status("excluded");
+  const needBib = sources.filter((s) => formatReference(s).includes(NEED)).length;
+  const topicCount = new Map<string, number>();
+  for (const s of sources) {
+    if (s.classification?.decision?.status === "excluded") continue;
+    const t = s.classification?.decision?.finalTopic || s.classification?.topic;
+    if (t) topicCount.set(t, (topicCount.get(t) ?? 0) + 1);
+  }
+  const topicData = [...topicCount]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([label, value]) => ({ label, value }));
   const avg = classified.length
     ? classified.reduce((sum, s) => sum + s.classification!.relevance, 0) / classified.length
     : null;
@@ -115,7 +132,20 @@ async function DashboardContent() {
           label="미확인 출처"
           value={String(unverified)}
           unit="개"
-          note="서지 정보 보완 필요"
+          note="출처(주소·서지)를 아예 적지 않은 자료"
+          href="/sources"
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="채택" value={String(adopted)} unit="개" note="연구자가 확정한 자료" href="/sources" />
+        <StatCard label="보류" value={String(held)} unit="개" note="나중에 다시 볼 자료" href="/sources" />
+        <StatCard label="제외" value={String(excluded)} unit="개" note="논문에 쓰지 않을 자료" href="/sources" />
+        <StatCard
+          label="서지 보완 필요"
+          value={String(needBib)}
+          unit="개"
+          note="참고문헌에 [보완 필요]가 남는 자료"
           href="/sources"
         />
       </div>
@@ -128,6 +158,19 @@ async function DashboardContent() {
           </CardHeader>
           <CardContent>
             <BarChart data={paraData} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>토픽별 자료 수</CardTitle>
+            <CardDescription>최종 토픽(없으면 AI 제안 토픽) · 제외한 자료 빼고 상위 8개</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {topicData.length ? (
+              <BarChart data={topicData} />
+            ) : (
+              <p className="text-sm text-muted-foreground">AI 판단을 하면 토픽이 생겨요.</p>
+            )}
           </CardContent>
         </Card>
         <Card>

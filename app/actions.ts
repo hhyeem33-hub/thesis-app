@@ -22,6 +22,7 @@ import {
 } from "@/lib/ai";
 import { dbAddDraft, ONLINE as ON_VERCEL } from "@/lib/db";
 import { recordLocalDraft } from "@/lib/documents";
+import { researchBasis } from "@/lib/research";
 import {
   addProject,
   getProjects,
@@ -247,6 +248,8 @@ export async function generateDraft(input: {
       topic,
       purpose: input.purpose.trim().slice(0, 1000),
       method: input.method.trim().slice(0, 1000),
+      // 프로젝트 연구 설정(목적·키워드·관점·질문·목차)을 초안의 기준으로
+      research: await researchBasis(project?.id ?? null),
     });
   } catch (e) {
     return { ok: false, error: aiErrorMessage(e) };

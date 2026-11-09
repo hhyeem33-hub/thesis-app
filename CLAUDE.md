@@ -52,6 +52,9 @@
 - 자료 서지 정보: `Source.bib`(kind·authors·year·journal·volume·issue·pages·publisher·place·doi·kciId·category). 자료 상세의 `components/bib-form.tsx`에서 편집.
 - HWPX 내보내기: `app/api/hwpx/export` → `lib/hwpx.ts` → `make_hwpx.py --out --template`. 양식 업로드(`app/api/hwpx/templates`)는 `--check-template`로 검사 후 data/templates/ 에 저장. 외대 양식 구조(스타일 번호 35·37·38·39·43~45·49·50)가 있어야 함. 내 컴퓨터 전용.
 - KCI(/kci, `lib/kci.ts`): 키 없으면 KCI 검색 결과를 새 탭(POST 양식)으로 열고, 논문 주소(ART번호)를 붙이면 상세 페이지의 숨은 칸(hdnAuthor 등)에서 서지를 읽음. 키가 있으면 Open API(openApiSearch.kci, 신청 IP에서만 → 내 컴퓨터 전용). KCI OAI-PMH는 이 IP를 방화벽에서 차단해 쓰지 않음. 키는 data/kci-key.json 또는 KCI_API_KEY.
+- AI 판단 + 연구자 확정: `sources.classification`(jsonb)에 AI 판단(relevance 1~5, topic, keywords, reason, confidence, para, summary)과 연구자 확정(`decision`: status 채택/보류/제외, finalTopic, finalKeywords, note)·기록(`log`)을 함께 저장. relevance 0 = AI 미판단. 판단 기준은 `lib/research.ts`의 `researchBasis`(프로젝트 연구 설정, 비면 공통 연구 설정). AI는 제목+앞 2,000자만(Haiku, effort low). 화면: 자료 관리의 `sources-list`·`bulk-classify`(4개씩 병렬, 진행률)·`source-review-dialog`.
+- 프로젝트별 연구 설정(/research): 로컬 data/project-research.json, 온라인은 `documents.doc.research`(새 표 없이; dbSaveDoc 는 research 를 보존). 저장마다 바뀐 칸 이력.
+- 슈파베이스 비밀 키로는 표·칸을 만들 수 없다(데이터만). 새 정보는 가능하면 기존 jsonb 칸에 넣는다.
 - 사이드바의 현재 메뉴 표시(`usePathname`)는 `<Suspense>` 안에 있어야 한다 (`/sources/[id]`처럼 주소를 미리 모르는 화면 때문에 빌드 실패).
 - 이 Next.js는 `cacheComponents`가 켜져 있다: `export const dynamic` 사용 불가. 파일을 읽는 화면은 `<Suspense>` 안의 컴포넌트에서 `await connection()` 후 읽는다.
 

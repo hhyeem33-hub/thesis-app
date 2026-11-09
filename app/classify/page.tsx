@@ -41,8 +41,8 @@ async function ClassifyContent() {
     return <DataError error={e} />;
   }
   const [sources, research, key] = data;
-  const pending = sources.filter((s) => !s.classification);
-  const done = sources.filter((s) => s.classification);
+  const pending = sources.filter((s) => !s.classification?.relevance);
+  const done = sources.filter((s) => (s.classification?.relevance ?? 0) > 0);
 
   return (
     <div className="flex flex-col gap-6">
