@@ -12,7 +12,20 @@ import { Button } from "@/components/ui/button";
 const PARALLEL = 4;
 
 /** 전체 자료 AI 판단 (제목 + 앞부분만 써서 비용 절약, 진행률 표시) */
-export function BulkClassify({ hasKey, pendingCount, total }: { hasKey: boolean; pendingCount: number; total: number }) {
+export function BulkClassify({
+  hasKey,
+  pendingCount,
+  total,
+  basisProjectId,
+  basisName,
+}: {
+  hasKey: boolean;
+  pendingCount: number;
+  total: number;
+  /** 이 프로젝트의 연구 설정 기준으로 (없으면 자료마다 자기 프로젝트) */
+  basisProjectId?: string | null;
+  basisName?: string;
+}) {
   const router = useRouter();
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number; lastError?: string } | null>(null);
   const stopRef = useRef(false);
@@ -36,7 +49,7 @@ export function BulkClassify({ hasKey, pendingCount, total }: { hasKey: boolean;
     const worker = async () => {
       while (next < ids.length && !stopRef.current) {
         const id = ids[next++];
-        const r = await classifySourceAction(id);
+        const r = await classifySourceAction(id, basisProjectId);
         state.done++;
         if (!r.ok) {
           state.failed++;
@@ -64,7 +77,7 @@ export function BulkClassify({ hasKey, pendingCount, total }: { hasKey: boolean;
       <div className="flex flex-wrap items-center gap-2">
         <Sparkles className="size-4 text-primary" />
         <p className="text-sm">
-          <b>AI 판단</b> — 연구 설정을 기준으로 관련도·토픽·키워드·근거·신뢰도를 매겨요. 아직 판단 안 한 자료{" "}
+          <b>AI 판단</b> — {basisName ? <>‘{basisName}’ 연구 설정</> : "연구 설정"}을 기준으로 관련도·토픽·키워드·근거·신뢰도를 매겨요. 아직 판단 안 한 자료{" "}
           <b className="tabular-nums">{pendingCount}</b>개
         </p>
         <div className="ml-auto flex gap-1.5">

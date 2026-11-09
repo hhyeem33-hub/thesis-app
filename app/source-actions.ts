@@ -82,16 +82,21 @@ function blankClassification(): Classification {
  * 자료 하나를 AI가 판단한다: 관련도·제안 토픽·키워드·근거·신뢰도 (프로젝트 연구 설정 기준).
  * 연구자의 확정 분류(decision)와 기록(log)은 그대로 둔다.
  */
-export async function classifySourceAction(id: string): Promise<ActionResult & { relevance?: number }> {
+export async function classifySourceAction(
+  id: string,
+  /** 이 프로젝트의 연구 설정을 기준으로 (AI 분류 화면에서 고른 프로젝트). 없으면 자료의 프로젝트 */
+  basisProjectId?: string | null
+): Promise<ActionResult & { relevance?: number }> {
   try {
     const source = await getSource(id);
     if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
-    const basis = await researchBasis(source.projectId);
+    const projectId = basisProjectId || source.projectId;
+    const basis = await researchBasis(projectId);
     const result = await classifySource({ ...source, research: basis });
     const now = new Date().toISOString();
     const prev = source.classification ?? blankClassification();
     const next = withLog(
-      { ...prev, ...result, classifiedAt: now, basisProjectId: source.projectId },
+      { ...prev, ...result, classifiedAt: now, basisProjectId: basis.projectId },
       "AI",
       `${result.relevance}등급 · 토픽 ‘${result.topic}’ · 신뢰도 ${result.confidence}`
     );

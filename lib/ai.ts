@@ -185,9 +185,18 @@ export function basisText(r: ResearchBasis) {
     .join("\n");
 }
 
-const ClassifyResult = z.object({
+/** 목차가 있으면 제안 토픽을 목차 항목(또는 '해당 없음') 중에서만 고르게 한다 */
+export const NO_TOPIC = "해당 없음";
+function classifySchema(outline: string[]) {
+  const items = [...new Set(outline.map((o) => o.trim()).filter(Boolean))];
+  const topic = items.length
+    ? z.enum([NO_TOPIC, ...items] as [string, ...string[]]).describe("제안 토픽: 목차 항목 중 이 자료가 들어갈 곳 (맞는 곳이 없으면 해당 없음)")
+    : z.string().describe("제안 토픽: 짧은 주제명 (15자 이내)");
+  return ClassifyBase.extend({ topic });
+}
+
+const ClassifyBase = z.object({
   relevance: z.enum(["1", "2", "3", "4", "5"]).describe("연구와의 관련도 (5가 가장 높음)"),
-  topic: z.string().describe("제안 토픽: 목차 항목 중 가장 맞는 것, 없으면 짧은 주제명 (15자 이내)"),
   keywords: z.array(z.string()).describe("관련 키워드 3~6개 (핵심 키워드와 겹치는 것 우선)"),
   reason: z.string().describe("분류 근거 1~2문장: 왜 이 등급·토픽인지"),
   confidence: z.enum(["높음", "중간", "낮음"]).describe("판단 신뢰도 (내용이 짧거나 애매하면 낮음)"),
@@ -231,7 +240,7 @@ export async function classifySource(input: {
   const response = await client.messages.parse({
     model: AI_MODEL,
     max_tokens: 2000,
-    output_config: { effort: "low", format: zodOutputFormat(ClassifyResult) },
+    output_config: { effort: "low", format: zodOutputFormat(classifySchema(input.research.outline)) },
     system: CLASSIFY_SYSTEM,
     messages: [
       {

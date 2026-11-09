@@ -22,10 +22,13 @@ export function ClassifyButton({
   sourceId,
   again = false,
   size = "default",
+  basisProjectId,
 }: {
   sourceId: string;
   again?: boolean;
   size?: "default" | "sm" | "xs";
+  /** 이 프로젝트의 연구 설정 기준으로 */
+  basisProjectId?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   return (
@@ -35,8 +38,8 @@ export function ClassifyButton({
       disabled={pending}
       onClick={() =>
         startTransition(async () => {
-          const r = await classifySourceAction(sourceId);
-          if (r.ok) toast.success("AI 분류를 마쳤어요");
+          const r = await classifySourceAction(sourceId, basisProjectId);
+          if (r.ok) toast.success(`AI 분류를 마쳤어요 · ${r.relevance}등급`);
           else toast.error("AI 분류에 실패했어요", { description: keyHelp(r.error) });
         })
       }

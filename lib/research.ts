@@ -3,6 +3,7 @@ import path from "path";
 import { dbGetProjectResearch, dbSaveProjectResearch, ONLINE } from "./db";
 import { emptyDoc } from "./documents";
 import { getResearch } from "./sources";
+import { getProjects } from "./store";
 import type { ProjectResearch, ProjectResearchRecord } from "./types";
 
 // 프로젝트별 연구 설정 (AI 분류 · AI 초안의 기준)
@@ -60,8 +61,18 @@ export async function saveProjectResearch(projectId: string, next: Omit<ProjectR
  * AI가 판단할 때 쓸 기준. 프로젝트 연구 설정이 비어 있으면 예전 '연구 설정'(주제·키워드)을 쓴다.
  */
 export async function researchBasis(projectId: string | null) {
-  const r = projectId ? await getProjectResearch(projectId) : emptyResearch();
-  if (r.purpose || r.keywords.length || r.questions.length) return r;
+  const has = (r: ProjectResearchRecord) => !!(r.purpose || r.keywords.length || r.questions.length || r.outline.length);
+  if (projectId) {
+    const r = await getProjectResearch(projectId);
+    if (has(r)) return { ...r, projectId };
+  }
   const g = await getResearch();
-  return { ...r, purpose: r.purpose || g.topic, keywords: r.keywords.length ? r.keywords : g.keywords };
+  if (g.topic || g.keywords.length) return { ...emptyResearch(), purpose: g.topic, keywords: g.keywords, projectId: null };
+  // 프로젝트도 공통 설정도 비어 있으면, 가장 최근에 저장한 프로젝트 연구 설정을 쓴다
+  let latest: (ProjectResearchRecord & { projectId: string }) | null = null;
+  for (const p of await getProjects()) {
+    const r = await getProjectResearch(p.id);
+    if (has(r) && (!latest || r.updatedAt > latest.updatedAt)) latest = { ...r, projectId: p.id };
+  }
+  return latest ?? { ...emptyResearch(), projectId: null };
 }
