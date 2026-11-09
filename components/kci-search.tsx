@@ -36,12 +36,15 @@ export function KciSearch({
   online,
   projects,
   initialSaved,
+  onSaved,
 }: {
   /** 키가 있고 내 컴퓨터일 때 true → Open API 검색 */
   apiReady: boolean;
   online: boolean;
   projects: { id: string; name: string }[];
   initialSaved: string[];
+  /** 새로 저장했을 때 (예: 바로 AI 판단) */
+  onSaved?: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<KciArticle[] | null>(null);
@@ -103,6 +106,7 @@ export function KciSearch({
         return;
       }
       if (a.kciId) setSaved((s) => new Set(s).add(a.kciId));
+      if (!r.duplicate) onSaved?.(r.id);
       if (r.duplicate) toast.info("이미 라이브러리에 있는 논문이에요", { description: "중복으로 넣지 않았어요." });
       else
         toast.success("라이브러리에 선행연구로 저장했어요", {

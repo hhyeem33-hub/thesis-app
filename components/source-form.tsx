@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { addSource } from "@/app/source-actions";
+import { addSource, classifySourceAction } from "@/app/source-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,14 @@ const ORIGIN_HINT: Record<SourceType, string> = {
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
-export function SourceForm({ projects }: { projects: { id: string; name: string }[] }) {
+export function SourceForm({
+  projects,
+  autoClassify = false,
+}: {
+  projects: { id: string; name: string }[];
+  /** 저장 뒤 바로 AI 판단 */
+  autoClassify?: boolean;
+}) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [type, setType] = useState<SourceType>("pdf");
@@ -44,9 +51,15 @@ export function SourceForm({ projects }: { projects: { id: string; name: string 
         toast.error("자료를 저장하지 못했어요", { description: r.error });
         return;
       }
-      toast.success("자료를 저장했어요", {
-        description: "자료 상세에서 ‘AI 분류’를 누르면 관련도와 요약이 붙어요.",
-      });
+      if (autoClassify && r.id) {
+        toast.info("자료를 저장했어요. AI가 판단하는 중…");
+        const c = await classifySourceAction(r.id);
+        if (c.ok) toast.success(`AI 판단: ${c.relevance}등급`, { description: "자료 관리에서 채택·보류·제외를 정해 주세요." });
+        else toast.error("AI 판단은 실패했어요", { description: c.error });
+      } else
+        toast.success("자료를 저장했어요", {
+          description: "자료 상세에서 ‘AI 분류’를 누르면 관련도와 요약이 붙어요.",
+        });
       router.push(`/sources/${r.id}`);
     });
   }

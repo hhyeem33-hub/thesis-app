@@ -33,13 +33,24 @@ function readNote(rel) {
   const raw = readFileSync(full, "utf8");
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   const fm = {};
-  if (m)
+  const lists = {};
+  if (m) {
+    let key = null;
     for (const line of m[1].split(/\r?\n/)) {
       const kv = line.match(/^([\w_]+):\s*(.*)$/);
-      if (kv) fm[kv[1]] = kv[2].replace(/^"(.*)"$/, "$1").trim();
+      if (kv) {
+        key = kv[1];
+        fm[key] = kv[2].replace(/^"(.*)"$/, "$1").trim();
+        continue;
+      }
+      // 목록 값 (예: author: 아래 줄의  - "[[감성균 기자]]")
+      const item = line.match(/^\s+-\s+(.*)$/);
+      if (item && key)
+        (lists[key] ??= []).push(item[1].replace(/^"(.*)"$/, "$1").replace(/^\[\[(.*)\]\]$/, "$1").trim());
     }
+  }
   const body = (m ? raw.slice(m[0].length) : raw).replace(/\r\n?/g, "\n").trim();
-  return { rel, fm, body, mtime: statSync(full).mtime };
+  return { rel, fm, lists, body, mtime: statSync(full).mtime };
 }
 
 function toDate(s, fallback) {
@@ -55,6 +66,25 @@ const clipFiles = readdirSync(path.join(VAULT, "Clippings"))
     const num = (f) => Number(f.match(/ (\d+)\.md$/)?.[1] ?? 0);
     return base(a).localeCompare(base(b), "ko") || num(a) - num(b);
   });
+
+/** 스크랩 노트 머리말의 author 목록·published 날짜 → 서지 정보 (모르면 빈 칸) */
+function bibFromNote(n) {
+  const authors = n.lists.author ?? (n.fm.author ? [n.fm.author.replace(/^\[\[(.*)\]\]$/, "$1")] : []);
+  return {
+    kind: "web",
+    authors: authors.map((a) => a.trim()).filter(Boolean).join(", "),
+    year: (n.fm.published || "").match(/(19|20)\d{2}/)?.[0] ?? "",
+    journal: "",
+    volume: "",
+    issue: "",
+    pages: "",
+    publisher: "",
+    place: "",
+    doi: "",
+    kciId: "",
+    category: "",
+  };
+}
 
 const seenBody = new Set();
 const seenUrl = new Set();
@@ -81,6 +111,7 @@ for (const f of clipFiles) {
     createdAt: created,
     updatedAt: created,
     classification: null,
+    bib: bibFromNote(n),
   });
 }
 
@@ -105,6 +136,19 @@ const localFile = path.join(ROOT, "data", "sources.json");
 const local = existsSync(localFile) ? JSON.parse(readFileSync(localFile, "utf8")) : [];
 const have = new Set(local.map((s) => s.id));
 const added = sources.filter((s) => !have.has(s.id));
+// 이미 있는 자료는 비어 있는 저자·연도 칸만 채운다 (연구자가 고친 값은 그대로)
+const fresh = new Map(sources.map((s) => [s.id, s]));
+let bibFilled = 0;
+for (const s of local) {
+  const from = fresh.get(s.id)?.bib;
+  if (!from || (!from.authors && !from.year)) continue;
+  const cur = s.bib ?? { ...from, authors: "", year: "" };
+  const next = { ...cur, authors: cur.authors || from.authors, year: cur.year || from.year };
+  if (next.authors !== (s.bib?.authors ?? "") || next.year !== (s.bib?.year ?? "")) {
+    s.bib = next;
+    bibFilled++;
+  }
+}
 writeFileSync(localFile, JSON.stringify([...local, ...added], null, 2) + "\n", "utf8");
 
 // ── 온라인: 슈파베이스 SQL Editor 에서 실행할 파일 ──
@@ -293,6 +337,7 @@ console.log(
       가져올_자료: sources.length,
       중복이라_뺀_노트: skipped.length,
       내컴퓨터_새로_추가: added.length,
+      서지_빈칸_채움: bibFilled,
       내컴퓨터_이미_있어서_건너뜀: sources.length - added.length,
       온라인_SQL_파일_수: files.length,
       가장_큰_파일_KB: Math.round(biggest / 1000),

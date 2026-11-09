@@ -55,6 +55,9 @@
 - AI 판단 + 연구자 확정: `sources.classification`(jsonb)에 AI 판단(relevance 1~5, topic, keywords, reason, confidence, para, summary)과 연구자 확정(`decision`: status 채택/보류/제외, finalTopic, finalKeywords, note)·기록(`log`)을 함께 저장. relevance 0 = AI 미판단. 판단 기준은 `lib/research.ts`의 `researchBasis`(프로젝트 연구 설정, 비면 공통 연구 설정). AI는 제목+앞 2,000자만(Haiku, effort low). 화면: 자료 관리의 `sources-list`·`bulk-classify`(4개씩 병렬, 진행률)·`source-review-dialog`.
 - 프로젝트별 연구 설정(/research): 로컬 data/project-research.json, 온라인은 `documents.doc.research`(새 표 없이; dbSaveDoc 는 research 를 보존). 저장마다 바뀐 칸 이력.
 - 슈파베이스 비밀 키로는 표·칸을 만들 수 없다(데이터만). 새 정보는 가능하면 기존 jsonb 칸에 넣는다.
+- 자료 수집(/sources/new, `components/source-intake.tsx`): 탭 = 직접 입력·KCI 검색·옵시디언 가져오기(내 컴퓨터만, Clippings 새 노트만)·파일 올리기(`/api/sources/upload`: pdf=unpdf, docx=mammoth, txt·md)·목록 가져오기(`/api/sources/list`: xlsx=read-excel-file, csv 직접 파싱, 머리글 한/영). 저장은 `lib/source-intake.ts`의 `addSources`(id·제목·주소 중복 건너뜀). "들어오면 바로 AI 판단"은 `components/auto-classify.tsx`.
+- 자료 연표(/timeline): `bib.year` 기준. 옵시디언 스크랩의 published·author 머리말로 빈 서지 칸을 채움(import-obsidian.mjs, db:push 도 온라인 빈 칸만 채움).
+- 연결 설정(/connections): `lib/connections.ts` 가 옵시디언·드라이브·슈파베이스·Claude·KCI 를 실제로 확인(ok/fail/off + 이유). 작동 방법(/guide): Mermaid 흐름도 + 단계 카드.
 - 사이드바의 현재 메뉴 표시(`usePathname`)는 `<Suspense>` 안에 있어야 한다 (`/sources/[id]`처럼 주소를 미리 모르는 화면 때문에 빌드 실패).
 - 이 Next.js는 `cacheComponents`가 켜져 있다: `export const dynamic` 사용 불가. 파일을 읽는 화면은 `<Suspense>` 안의 컴포넌트에서 `await connection()` 후 읽는다.
 

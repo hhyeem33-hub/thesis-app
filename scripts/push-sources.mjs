@@ -47,12 +47,16 @@ const fail = (what, error) => {
   process.exit(1);
 };
 
+const onlineBib = new Map();
 async function readOnline() {
   const map = new Map();
   for (let from = 0; ; from += 100) {
-    const { data, error } = await db.from("sources").select("id, content").order("id").range(from, from + 99);
+    const { data, error } = await db.from("sources").select("id, content, bib").order("id").range(from, from + 99);
     if (error) fail("온라인 자료 읽기", error);
-    for (const r of data) map.set(r.id, r.content);
+    for (const r of data) {
+      map.set(r.id, r.content);
+      onlineBib.set(r.id, r.bib);
+    }
     if (data.length < 100) break;
   }
   return map;
@@ -81,6 +85,15 @@ for (const s of local) {
   else if (s.content.startsWith(noCR(c))) kinds.중간까지만_들어감.push(s);
   else kinds.원본과_다름.push(s);
 }
+// 서지 정보: 온라인에서 비어 있는 저자·연도만 내 컴퓨터 값으로 채운다 (온라인에서 고친 값은 그대로)
+const bibFill = [];
+for (const s of local) {
+  if (!online.has(s.id) || !s.bib) continue;
+  const cur = onlineBib.get(s.id);
+  const next = cur ? { ...cur, authors: cur.authors || s.bib.authors, year: cur.year || s.bib.year } : s.bib;
+  if (JSON.stringify(next) !== JSON.stringify(cur)) bibFill.push({ id: s.id, bib: next });
+}
+kinds.서지_빈칸_채울_것 = bibFill;
 const counts = Object.fromEntries(Object.entries(kinds).map(([name, list]) => [name, list.length]));
 console.log("[지금 온라인 상태]", JSON.stringify(counts, null, 2));
 for (const s of kinds.원본과_다름) {
@@ -104,6 +117,7 @@ for (let i = 0; i < kinds.새로_넣을_것.length; i += 10) {
     type: s.type,
     origin: s.origin,
     content: s.content,
+    bib: s.bib ?? null,
     created_at: s.createdAt,
     updated_at: s.updatedAt,
     classification: s.classification,
@@ -114,6 +128,14 @@ for (let i = 0; i < kinds.새로_넣을_것.length; i += 10) {
   inserted += batch.length;
 }
 console.log(`새로 넣음: ${inserted}개`);
+
+let bibDone = 0;
+for (const { id, bib } of bibFill) {
+  const { error } = await db.from("sources").update({ bib }).eq("id", id);
+  if (error) fail("서지 정보 채우기", error);
+  bibDone++;
+}
+console.log(`서지 빈칸 채움: ${bibDone}개`);
 
 const toFix = [...kinds.줄바꿈만_다름, ...kinds.중간까지만_들어감, ...kinds.원본과_다름];
 let fixed = 0;
