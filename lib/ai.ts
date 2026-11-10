@@ -187,12 +187,31 @@ export function basisText(r: ResearchBasis) {
 
 /** 목차가 있으면 제안 토픽을 목차 항목(또는 '해당 없음') 중에서만 고르게 한다 */
 export const NO_TOPIC = "해당 없음";
+const outlineItems = (outline: string[]) => [...new Set(outline.map((o) => o.trim()).filter(Boolean))];
+
+// 목록(enum)으로 강제하면 AI가 띄어쓰기·번호를 조금만 달리 써도 답 전체가 실패한다.
+// 그래서 글자로 받고, 아래 matchTopic 으로 가장 가까운 목차 항목에 맞춘다.
 function classifySchema(outline: string[]) {
-  const items = [...new Set(outline.map((o) => o.trim()).filter(Boolean))];
+  const items = outlineItems(outline);
   const topic = items.length
-    ? z.enum([NO_TOPIC, ...items] as [string, ...string[]]).describe("제안 토픽: 목차 항목 중 이 자료가 들어갈 곳 (맞는 곳이 없으면 해당 없음)")
+    ? z.string().describe(`제안 토픽: 다음 중 하나를 그대로 적는다 — ${[...items, NO_TOPIC].map((t) => `"${t}"`).join(", ")}`)
     : z.string().describe("제안 토픽: 짧은 주제명 (15자 이내)");
   return ClassifyBase.extend({ topic });
+}
+
+/** AI가 적은 토픽을 목차 항목에 맞춘다 (번호·띄어쓰기·따옴표 무시, 포함 관계 허용). 못 맞추면 '해당 없음' */
+export function matchTopic(raw: string, outline: string[]) {
+  const items = outlineItems(outline);
+  const topic = raw.trim();
+  if (!items.length) return topic.slice(0, 40);
+  const key = (s: string) => s.replace(/^[\d.\s장절]+/, "").replace(/["'‘’“”\s·.,]/g, "").toLowerCase();
+  const k = key(topic);
+  if (!k || k === key(NO_TOPIC)) return NO_TOPIC;
+  return (
+    items.find((i) => key(i) === k) ??
+    items.find((i) => key(i).includes(k) || k.includes(key(i))) ??
+    NO_TOPIC
+  );
 }
 
 const ClassifyBase = z.object({
@@ -211,7 +230,8 @@ const CLASSIFY_SYSTEM = `너는 대학원생의 논문 자료를 정리하는 �
 5 = 연구 질문에 바로 답하는 핵심 근거, 4 = 직접 관련, 3 = 부분적으로 관련, 2 = 배경 정도, 1 = 거의 무관
 
 [제안 토픽]
-- 연구 설정의 목차 항목 중 이 자료가 들어갈 곳을 고른다. 목차가 없거나 맞는 곳이 없으면 짧은 주제명을 붙인다.
+- 연구 설정에 목차가 있으면, 목차 항목 중 이 자료가 들어갈 곳 하나를 글자 그대로 적는다. 맞는 곳이 없으면 "해당 없음".
+- 목차가 없으면 짧은 주제명을 붙인다.
 
 [신뢰도]
 - 높음: 제목과 내용이 분명해 판단이 확실함 / 중간: 대체로 맞지만 일부 추측 / 낮음: 내용이 짧거나 애매함
@@ -263,7 +283,7 @@ ${content || "(내용 없음)"}`,
   const o = response.parsed_output;
   return {
     relevance: Number(o.relevance),
-    topic: o.topic.trim().slice(0, 40),
+    topic: matchTopic(o.topic, input.research.outline),
     keywords: o.keywords.map((k) => k.trim()).filter(Boolean).slice(0, 8),
     reason: o.reason.trim(),
     confidence: o.confidence,
