@@ -1,8 +1,8 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_KEY, AUTH_URL, authClient, currentUser, isOwnerEmail } from "@/lib/auth";
+import { AUTH_KEY, AUTH_URL, authClient, currentUser, GUEST_COOKIE, isOwnerEmail } from "@/lib/auth";
 import { db, dbPrepareAccount } from "@/lib/db";
 import { ONLINE } from "@/lib/online";
 
@@ -95,6 +95,7 @@ export async function passwordLogin(email: string, password: string): Promise<{ 
   }
   if (error || !data.user) return { ok: false, error: friendly(error?.message ?? "로그인에 실패했어요.") };
 
+  (await cookies()).delete(GUEST_COOKIE); // 로그인했으면 둘러보기는 끝
   try {
     await dbPrepareAccount({ id: data.user.id, isOwner: isOwnerEmail(data.user.email) });
   } catch (err) {
@@ -128,4 +129,18 @@ export async function setMyPassword(password: string): Promise<{ ok: true } | { 
       error: /different from the old|same/i.test(error.message) ? "지금 비밀번호와 같아요. 다른 비밀번호를 적어 주세요." : friendly(error.message),
     };
   return { ok: true };
+}
+
+// ── 둘러보기 (로그인 없이 주인 계정 자료를 읽기만) ──────────────────────────────
+
+export async function enterGuest() {
+  if (!ONLINE) redirect("/");
+  // 비밀이 아니라서 화면(브라우저)도 읽을 수 있게 둔다 → 버튼을 미리 막는 데 씀. 실제 막기는 서버에서 한다
+  (await cookies()).set(GUEST_COOKIE, "1", { httpOnly: false, sameSite: "lax", secure: true, path: "/", maxAge: 60 * 60 * 24 });
+  redirect("/dashboard");
+}
+
+export async function exitGuest() {
+  (await cookies()).delete(GUEST_COOKIE);
+  redirect("/welcome");
 }

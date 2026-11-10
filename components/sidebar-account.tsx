@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { LogOut, Monitor, UserRound } from "lucide-react";
-import { signOut } from "@/app/auth-actions";
+import { LogIn, LogOut, Monitor, UserRound } from "lucide-react";
+import { exitGuest, signOut } from "@/app/auth-actions";
 import { getAiKeyStatus } from "@/lib/ai";
-import { currentUser } from "@/lib/auth";
+import { currentUser, isGuest } from "@/lib/auth";
 import { getKciKey } from "@/lib/kci";
 import { ONLINE } from "@/lib/online";
 import { getSettings, isDirectory } from "@/lib/store";
@@ -49,17 +49,23 @@ const DOT = { ok: "bg-success", warn: "bg-gold", off: "bg-muted-foreground/40" }
 
 export async function SidebarAccount() {
   await connection();
-  const [user, dots] = await Promise.all([currentUser(), statuses()]);
+  const [user, dots, guest] = await Promise.all([currentUser(), statuses(), isGuest()]);
   return (
     <div className="flex flex-col gap-2 px-1 py-1 text-xs group-data-[collapsible=icon]:hidden">
       <div className="flex items-center gap-2">
         {ONLINE ? <UserRound className="size-4 shrink-0 text-primary" /> : <Monitor className="size-4 shrink-0 text-primary" />}
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium" title={user?.email}>
-            {ONLINE ? user?.email || "로그인 안 됨" : "내 컴퓨터"}
+            {ONLINE ? (guest ? "둘러보기 모드" : user?.email || "로그인 안 됨") : "내 컴퓨터"}
           </p>
           <p className="text-[11px] text-muted-foreground">
-            {ONLINE ? (user?.isOwner ? "앱 주인 계정" : "내 자료는 나만 봐요") : "로그인 없이 쓰는 중"}
+            {ONLINE
+              ? guest
+                ? "만든 사람의 자료 · 볼 수만 있어요"
+                : user?.isOwner
+                  ? "앱 주인 계정"
+                  : "내 자료는 나만 봐요"
+              : "로그인 없이 쓰는 중"}
           </p>
         </div>
       </div>
@@ -73,6 +79,17 @@ export async function SidebarAccount() {
           </span>
         ))}
       </Link>
+      {guest && (
+        <form action={exitGuest}>
+          <button
+            type="submit"
+            className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <LogIn className="size-3.5" />
+            로그인하러 가기
+          </button>
+        </form>
+      )}
       {ONLINE && user && (
         <form action={signOut}>
           <button

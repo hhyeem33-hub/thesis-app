@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { requireUserId } from "./auth";
+import { requireUserId, requireWriter } from "./auth";
 import { ONLINE } from "./online";
 import type {
   AiDraftRecord,
@@ -79,7 +79,7 @@ export async function dbGetProjects(): Promise<Project[]> {
 }
 
 export async function dbAddProject(p: Project) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   const { error } = await db().from("projects").insert({
     id: p.id,
     user_id: uid,
@@ -103,7 +103,7 @@ export async function dbAddDraft(d: {
   manuscript: unknown;
   savedPath: string | null;
 }) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   if (d.projectId) await assertMyProject(uid, d.projectId);
   const { error } = await db().from("ai_drafts").insert({
     user_id: uid,
@@ -185,7 +185,7 @@ export async function dbGetSource(id: string): Promise<Source | null> {
 }
 
 export async function dbSaveSource(s: Source) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   if (s.projectId) await assertMyProject(uid, s.projectId);
   // 이미 있는 자료면 "내 것일 때만" 고친다 (남의 자료를 같은 id로 덮어쓰지 않게)
   const { data: existing, error: rErr } = await db().from("sources").select("user_id").eq("id", s.id).maybeSingle();
@@ -209,7 +209,7 @@ export async function dbGetResearch(): Promise<Research | null> {
 }
 
 export async function dbSaveResearch(r: Research) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   const { error } = await db()
     .from("user_settings")
     .upsert({ user_id: uid, research: { topic: r.topic, keywords: r.keywords }, updated_at: new Date().toISOString() });
@@ -218,14 +218,14 @@ export async function dbSaveResearch(r: Research) {
 
 /** 사람마다 저장한 Claude API 키 (서버에서만 읽음, 화면에는 끝 4자리만) */
 export async function dbGetUserAiKey(): Promise<string> {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   const { data, error } = await db().from("user_settings").select("ai_key").eq("user_id", uid).maybeSingle();
   check(error);
   return (data?.ai_key as string | null)?.trim() ?? "";
 }
 
 export async function dbSaveUserAiKey(key: string | null) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   const { error } = await db()
     .from("user_settings")
     .upsert({ user_id: uid, ai_key: key, updated_at: new Date().toISOString() });
@@ -261,7 +261,7 @@ export async function dbGetDoc(projectId: string): Promise<ThesisDoc | null> {
 }
 
 export async function dbSaveDoc(doc: ThesisDoc, version: DocVersion) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   await assertMyProject(uid, doc.projectId);
   // 같은 줄에 함께 저장된 프로젝트 연구 설정(research)은 그대로 둔다
   const research = (await readDocRow(uid, doc.projectId))?.research;
@@ -335,7 +335,7 @@ export async function dbGetProjectResearch(projectId: string): Promise<ProjectRe
 }
 
 export async function dbSaveProjectResearch(projectId: string, research: ProjectResearchRecord, emptyDoc: ThesisDoc) {
-  const uid = await requireUserId();
+  const uid = await requireWriter();
   await assertMyProject(uid, projectId);
   const doc = { ...((await readDocRow(uid, projectId)) ?? emptyDoc), research };
   const { error } = await db()

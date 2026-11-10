@@ -7,6 +7,7 @@ import { Loader2, Sparkles, Square } from "lucide-react";
 import { toast } from "sonner";
 import { classifySourceAction, classifyTargets } from "@/app/source-actions";
 import { Button } from "@/components/ui/button";
+import { GUEST_NOTICE, useGuest } from "@/components/use-guest";
 
 /** 동시에 몇 개씩 AI 판단할지 (너무 많으면 요청 제한에 걸림) */
 const PARALLEL = 4;
@@ -30,6 +31,7 @@ export function BulkClassify({
   kciPendingCount?: number;
 }) {
   const router = useRouter();
+  const guest = useGuest();
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number; lastError?: string } | null>(null);
   const stopRef = useRef(false);
   const [running, setRunning] = useState(false);
@@ -92,23 +94,24 @@ export function BulkClassify({
           ) : (
             <>
               {kciPendingCount > 0 && (
-                <Button size="sm" variant="secondary" disabled={!hasKey} onClick={() => run(false, "KCI 선행연구")}>
+                <Button size="sm" variant="secondary" disabled={!hasKey || guest} onClick={() => run(false, "KCI 선행연구")}>
                   <Sparkles />
                   KCI 선행연구 {kciPendingCount}개만 판단
                 </Button>
               )}
-              <Button size="sm" disabled={!hasKey || pendingCount === 0} onClick={() => run(false)}>
+              <Button size="sm" disabled={!hasKey || guest || pendingCount === 0} onClick={() => run(false)}>
                 <Sparkles />
                 미판단 {pendingCount}개 판단
               </Button>
-              <Button size="sm" variant="outline" disabled={!hasKey} onClick={() => run(true)}>
+              <Button size="sm" variant="outline" disabled={!hasKey || guest} onClick={() => run(true)}>
                 전체 {total}개 다시 판단
               </Button>
             </>
           )}
         </div>
       </div>
-      {!hasKey && (
+      {guest && <p className="text-xs text-muted-foreground">{GUEST_NOTICE}</p>}
+      {!hasKey && !guest && (
         <p className="text-xs text-muted-foreground">
           AI를 쓰려면{" "}
           <Link href="/settings" className="underline">

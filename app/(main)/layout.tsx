@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
+import { GuestBanner } from "@/components/guest-banner";
 import { Hint } from "@/components/hint";
 import { SidebarAccount, SidebarAccountSkeleton } from "@/components/sidebar-account";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -16,6 +17,9 @@ export default function MainLayout({ children }: LayoutProps<"/">) {
         }
       />
       <SidebarInset className="min-w-0">
+        <Suspense fallback={null}>
+          <GuestBanner />
+        </Suspense>
         <header className="flex h-14 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
           <Hint label="사이드바 접기/펼치기 (Ctrl+B)">
             <SidebarTrigger aria-label="사이드바 열기/닫기" />

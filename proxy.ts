@@ -35,6 +35,9 @@ export async function proxy(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const open = OPEN.some((p) => path === p || path.startsWith(`${p}/`));
+  // 둘러보기 모드: 로그인 없이 화면은 볼 수 있다 (자료 읽기만, 바꾸는 일은 서버에서 막음). API는 막음
+  const guest = request.cookies.get("guest_view")?.value === "1";
+  if (!user && !open && guest && !path.startsWith("/api/")) return response;
   if (!user && !open) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "로그인이 필요해요." }, { status: 401 });
     return NextResponse.redirect(new URL("/welcome", request.url));

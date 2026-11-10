@@ -1,5 +1,6 @@
 "use server";
 
+import { guestBlock } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { addSources, scanObsidian } from "@/lib/source-intake";
 import { getSources } from "@/lib/sources";
@@ -21,6 +22,9 @@ export async function previewObsidian(): Promise<Result<{ vault: string; total: 
 
 /** 새 노트만 라이브러리에 넣기 (보관함 원본은 읽기만) */
 export async function importObsidian(projectId: string): Promise<Result<{ added: string[]; skipped: string[] }>> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   try {
     const { items } = await scanObsidian();
     const have = new Set((await getSources()).map((s) => s.id));

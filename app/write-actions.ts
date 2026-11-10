@@ -1,5 +1,6 @@
 "use server";
 
+import { guestBlock } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { countChars } from "@/lib/bib";
 import { getVersion, listVersions, saveDocWithVersion } from "@/lib/documents";
@@ -17,6 +18,9 @@ export async function saveDocument(input: {
   doc: Omit<ThesisDoc, "updatedAt">;
   memo: string;
 }): Promise<Result<{ version: Omit<DocVersion, "doc"> }>> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const d = input.doc;
   if (!(await getProjects()).some((p) => p.id === d.projectId))
     return { ok: false, error: "프로젝트를 찾을 수 없어요." };
@@ -67,6 +71,9 @@ export async function fetchVersion(id: string): Promise<Result<{ version: DocVer
 
 /** 되돌리기: 예전 버전 내용을 새 버전으로 저장한다 (기록은 지워지지 않음) */
 export async function restoreVersion(id: string): Promise<Result<{ doc: ThesisDoc; version: Omit<DocVersion, "doc"> }>> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   try {
     const old = await getVersion(id);
     if (!old) return { ok: false, error: "버전을 찾을 수 없어요." };
@@ -81,6 +88,9 @@ export async function restoreVersion(id: string): Promise<Result<{ doc: ThesisDo
 
 /** 자료의 서지 정보 고치기 (참고문헌·각주에 쓰임) */
 export async function updateSourceBib(id: string, bib: Bib): Promise<Result> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   try {
     const source = await getSource(id);
     if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };

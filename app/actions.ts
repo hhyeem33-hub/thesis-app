@@ -1,5 +1,6 @@
 "use server";
 
+import { guestBlock } from "@/lib/auth";
 import { execFile } from "child_process";
 import { randomUUID } from "crypto";
 import { existsSync, promises as fs } from "fs";
@@ -38,6 +39,9 @@ export async function createProject(input: {
   name: string;
   description: string;
 }): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const name = input.name.trim();
   const description = input.description.trim().slice(0, 500);
 
@@ -108,6 +112,9 @@ export async function retryFolder(
   id: string,
   target: FolderTarget
 ): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   if (ON_VERCEL) return { ok: false, error: "폴더는 내 컴퓨터에서만 만들어져요." };
   const projects = await getProjects();
   const project = projects.find((p) => p.id === id);
@@ -130,6 +137,9 @@ export async function openFolder(
   id: string,
   target: FolderTarget | "ai"
 ): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   if (ON_VERCEL) return { ok: false, error: "폴더는 내 컴퓨터에서만 열 수 있어요." };
   const project = (await getProjects()).find((p) => p.id === id);
   const folder =
@@ -147,6 +157,9 @@ export async function updateSettings(input: {
   obsidianVaultPath: string;
   driveRootPath: string;
 }): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const clean = (p: string) => p.trim().replace(/^"(.*)"$/, "$1");
   const obsidianVaultPath = clean(input.obsidianVaultPath);
   const driveRootPath = clean(input.driveRootPath);
@@ -170,6 +183,9 @@ export async function updateSettings(input: {
 
 
 export async function saveAiKey(apiKey: string): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const key = apiKey.trim();
   if (!key.startsWith("sk-ant-"))
     return { ok: false, error: "Claude API 키는 ‘sk-ant-’로 시작해요. 키를 다시 확인해 주세요." };
@@ -184,6 +200,9 @@ export async function saveAiKey(apiKey: string): Promise<ActionResult> {
 }
 
 export async function removeAiKey(): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   await deleteApiKey();
   revalidatePath("/settings");
   return { ok: true };
@@ -191,6 +210,9 @@ export async function removeAiKey(): Promise<ActionResult> {
 
 /** 입력한 키(없으면 저장된 키)로 연결을 확인한다 */
 export async function testAiConnection(apiKey?: string): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   try {
     const name = await testConnection(apiKey?.trim() || undefined);
     return { ok: true, warning: `${name} 모델에 연결됐어요.` };
@@ -234,6 +256,9 @@ export async function generateDraft(input: {
   purpose: string;
   method: string;
 }): Promise<DraftResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const topic = input.topic.trim().slice(0, 300);
   if (!topic) return { ok: false, error: "주제를 적어 주세요." };
   const project = ON_VERCEL ? null : (await getProjects()).find((p) => p.id === input.projectId);

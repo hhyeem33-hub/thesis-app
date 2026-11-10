@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { authClient, isOwnerEmail } from "@/lib/auth";
+import { authClient, GUEST_COOKIE, isOwnerEmail } from "@/lib/auth";
 import { dbPrepareAccount } from "@/lib/db";
 
 // 이메일 링크·구글 로그인에서 돌아오는 곳: 로그인 확정 → 계정 준비(주인은 기존 자료 넘겨받기, 처음이면 '새 프로젝트 1') → 대시보드
@@ -27,5 +27,7 @@ export async function GET(request: NextRequest) {
     // 로그인은 됐지만 계정 준비 실패 (예: auth.sql 을 아직 안 돌림) → 대시보드에서 안내가 보인다
     console.error("계정 준비 실패:", e instanceof Error ? e.message : e);
   }
-  return NextResponse.redirect(new URL("/dashboard", url.origin));
+  const res = NextResponse.redirect(new URL("/dashboard", url.origin));
+  res.cookies.delete(GUEST_COOKIE); // 로그인했으면 둘러보기는 끝
+  return res;
 }

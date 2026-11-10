@@ -1,5 +1,6 @@
 "use client";
 
+import { GUEST_NOTICE, useGuest } from "@/components/use-guest";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -156,6 +157,7 @@ export function WriteEditor({
   const [confirmRestore, setConfirmRestore] = useState<VersionInfo | null>(null);
   const focusFn = useRef<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const guest = useGuest();
   const area = useRef<HTMLTextAreaElement>(null);
 
   const dirty = JSON.stringify(doc) !== savedSnapshot;
@@ -418,7 +420,7 @@ export function WriteEditor({
             onKeyDown={(e) => e.key === "Enter" && save()}
           />
           <Hint label="저장할 때마다 히스토리에 버전이 기록돼요 (Ctrl+S)">
-            <Button onClick={save} disabled={pending}>
+            <Button onClick={save} disabled={pending || guest} title={guest ? GUEST_NOTICE : undefined}>
               {pending ? <Loader2 className="animate-spin" /> : <Save />}
               저장
             </Button>

@@ -3,8 +3,9 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, LogIn, MailCheck } from "lucide-react";
+// Eye 는 비밀번호 보기와 둘러보기 버튼에 같이 쓴다
 import { toast } from "sonner";
-import { googleLoginUrl, loginOptions, passwordLogin, sendLoginLink } from "@/app/auth-actions";
+import { enterGuest, googleLoginUrl, loginOptions, passwordLogin, sendLoginLink } from "@/app/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -154,6 +155,14 @@ export function LoginPanel() {
           </Button>
         </>
       )}
+
+      <form action={enterGuest} className="flex flex-col gap-1">
+        <Button type="submit" variant="ghost" className="h-10 border border-dashed border-gold/60 bg-background/60" disabled={!!busy}>
+          <Eye />
+          둘러보기 (로그인 없이 보기)
+        </Button>
+        <p className="text-center text-xs text-muted-foreground">만든 사람의 자료·AI 분류 결과를 읽기 전용으로 볼 수 있어요.</p>
+      </form>
 
       {linkSentTo ? (
         <p className="inline-flex items-start gap-1.5 text-xs text-muted-foreground">

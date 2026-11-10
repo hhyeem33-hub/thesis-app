@@ -1,5 +1,6 @@
 "use server";
 
+import { guestBlock } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { ONLINE } from "@/lib/db";
@@ -122,6 +123,9 @@ function refreshLists() {
 
 /** 라이브러리에 'KCI 선행연구'로 저장 (하나) */
 export async function saveKciToLibrary(a: KciArticle, projectId: string): Promise<Result<{ id: string; duplicate?: boolean }>> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   if (!a.title.trim()) return { ok: false, error: "논문 제목을 적어 주세요." };
   try {
     const dup = duplicateOf(await getSources(), a);
@@ -140,6 +144,9 @@ export async function saveKciBatch(
   articles: KciArticle[],
   projectId: string
 ): Promise<Result<{ added: { id: string; kciId: string }[]; skipped: number }>> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   if (!articles.length) return { ok: false, error: "저장할 논문을 골라 주세요." };
   if (articles.length > BATCH_MAX) return { ok: false, error: `한 번에 ${BATCH_MAX}개까지 저장할 수 있어요.` };
   try {

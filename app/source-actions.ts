@@ -1,5 +1,6 @@
 "use server";
 
+import { guestBlock } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { aiErrorMessage, classifySource, getAiKeyStatus } from "@/lib/ai";
@@ -37,6 +38,9 @@ export async function addSource(input: {
   content: string;
   projectId: string;
 }): Promise<ActionResult & { id?: string }> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const title = input.title.trim();
   if (!title) return { ok: false, error: "제목을 적어 주세요." };
   if (title.length > MAX_TITLE) return { ok: false, error: `제목은 ${MAX_TITLE}자까지 쓸 수 있어요.` };
@@ -89,6 +93,9 @@ export async function classifySourceAction(
   /** 이 프로젝트의 연구 설정을 기준으로 (AI 분류 화면에서 고른 프로젝트). 없으면 자료의 프로젝트 */
   basisProjectId?: string | null
 ): Promise<ActionResult & { relevance?: number }> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   try {
     const source = await getSource(id);
     if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
@@ -114,6 +121,7 @@ export async function classifySourceAction(
 
 /** 한꺼번에 분류할 자료 번호 (all=false 면 아직 AI 판단이 없는 것만) */
 export async function classifyTargets(all: boolean, category?: string): Promise<string[]> {
+  if (await guestBlock()) return []; // 둘러보기는 판단하지 않음
   const sources = await getSources();
   return sources
     .filter((s) => !category || s.bib?.category === category)
@@ -123,6 +131,9 @@ export async function classifyTargets(all: boolean, category?: string): Promise<
 
 /** 예전 버튼용: 미분류를 10개씩 */
 export async function classifyPending(): Promise<ActionResult & { done?: number; left?: number }> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const pending = await classifyTargets(false);
   let done = 0;
   for (const id of pending.slice(0, 10)) {
@@ -139,6 +150,9 @@ export async function decideSource(
   patch: Partial<Pick<Decision, "status" | "finalTopic" | "finalKeywords" | "note">>,
   what: string
 ): Promise<ActionResult & { classification?: Classification }> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   try {
     const source = await getSource(id);
     if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
@@ -180,6 +194,9 @@ export async function updateProjectResearch(
   projectId: string,
   input: { purpose: string; keywords: string; perspective: string; questions: string; outline: string }
 ): Promise<ActionResult & { changed?: string[] }> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   if (!(await getProjects()).some((p) => p.id === projectId)) return { ok: false, error: "프로젝트를 찾을 수 없어요." };
   const uniq = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))];
   try {
@@ -202,6 +219,9 @@ export async function updateResearch(input: {
   topic: string;
   keywords: string;
 }): Promise<ActionResult> {
+  // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
   const topic = input.topic.trim().slice(0, 300);
   // 쉼표·줄바꿈으로 나누고, # 은 떼고, 같은 키워드는 하나만
   const keywords = [

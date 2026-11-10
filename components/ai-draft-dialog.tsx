@@ -1,5 +1,6 @@
 "use client";
 
+import { GUEST_NOTICE, useGuest } from "@/components/use-guest";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, Copy, Loader2, Sparkles, TriangleAlert } from "lucide-react";
@@ -100,6 +101,7 @@ export function AiDraftDialog({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [pending, startTransition] = useTransition();
+  const guest = useGuest();
 
   function handleOpenChange(next: boolean) {
     if (pending) return; // 쓰는 중에는 창을 닫지 않는다
@@ -293,7 +295,7 @@ export function AiDraftDialog({
               <Button type="button" variant="outline" disabled={pending} onClick={() => handleOpenChange(false)}>
                 취소
               </Button>
-              <Button type="submit" disabled={pending || !topic.trim() || !!blocker}>
+              <Button type="submit" disabled={pending || guest || !topic.trim() || !!blocker} title={guest ? GUEST_NOTICE : undefined}>
                 {pending ? <Loader2 className="animate-spin" /> : <Sparkles />}
                 {pending ? "AI가 쓰는 중… (1분쯤)" : "초안 쓰기"}
               </Button>

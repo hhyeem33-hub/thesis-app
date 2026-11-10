@@ -1,5 +1,6 @@
 "use client";
 
+import { GUEST_NOTICE, useGuest } from "@/components/use-guest";
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
@@ -38,6 +39,7 @@ export function NewProjectDialog({
   const [touched, setTouched] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const guest = useGuest();
 
   const nameError = validateProjectName(name, existingNames);
   const shownError = touched || name ? nameError : null;
@@ -160,7 +162,7 @@ export function NewProjectDialog({
             >
               취소
             </Button>
-            <Button type="submit" disabled={pending || (touched && !!nameError)}>
+            <Button type="submit" disabled={pending || guest || (touched && !!nameError)} title={guest ? GUEST_NOTICE : undefined}>
               {pending && <Loader2 className="animate-spin" />}
               {pending ? "만드는 중…" : "만들기"}
             </Button>

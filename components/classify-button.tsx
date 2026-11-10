@@ -6,6 +6,7 @@ import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { classifyPending, classifySourceAction } from "@/app/source-actions";
 import { Button } from "@/components/ui/button";
+import { GUEST_NOTICE, useGuest } from "@/components/use-guest";
 
 function keyHelp(error: string) {
   return error.includes("API 키") ? (
@@ -31,11 +32,13 @@ export function ClassifyButton({
   basisProjectId?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
+  const guest = useGuest();
   return (
     <Button
       size={size}
+      title={guest ? GUEST_NOTICE : undefined}
       variant={again ? "outline" : "default"}
-      disabled={pending}
+      disabled={pending || guest}
       onClick={() =>
         startTransition(async () => {
           const r = await classifySourceAction(sourceId, basisProjectId);
