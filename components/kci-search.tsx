@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { CheckCircle2, ClipboardPaste, ExternalLink, Loader2, Save, Search } from "lucide-react";
 import { toast } from "sonner";
-import { lookupKci, saveKciToLibrary, searchKci } from "@/app/kci-actions";
+import { lookupKci, saveKciBatch, saveKciToLibrary, searchKci } from "@/app/kci-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,10 @@ const EMPTY: KciArticle = {
   abstract: "",
   url: "",
 };
+/** 한꺼번에 저장할 수 있는 최대 개수 (서버도 같은 값으로 막음) */
+const BATCH_MAX = 50;
+/** KCI 검색 한 번에 가져오는 결과 수 (lib/kci.ts 의 KCI_PAGE_SIZE 와 같게) */
+const KCI_PAGE_SIZE = 50;
 const selectClass =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
@@ -54,6 +58,9 @@ export function KciSearch({
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
   const [saved, setSaved] = useState(new Set(initialSaved));
   const [busy, setBusy] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [recent, setRecent] = useState(true);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const kciForm = useRef<HTMLFormElement>(null);
   const formCard = useRef<HTMLDivElement>(null);
@@ -68,16 +75,62 @@ export function KciSearch({
       kciForm.current?.submit(); // KCI 검색 결과를 새 탭에서 연다
       return;
     }
-    setBusy("search");
+    load(1);
+  }
+
+  /** page 1 = 새 검색, 2 이상 = 결과 아래에 더 붙이기 */
+  function load(nextPage: number) {
+    setBusy(nextPage === 1 ? "search" : "more");
     startTransition(async () => {
-      const r = await searchKci(query);
+      const r = await searchKci(query, nextPage, recent);
       setBusy(null);
       if (!r.ok) {
         toast.error("KCI 검색에 실패했어요", { description: r.error });
         return;
       }
-      setResults(r.items);
+      setPage(nextPage);
       setTotal(r.total);
+      setResults((prev) => (nextPage === 1 || !prev ? r.items : [...prev, ...r.items]));
+      if (nextPage === 1) setChecked(new Set());
+    });
+  }
+
+  const keyOf = (a: KciArticle) => a.kciId || a.title;
+  const savable = (results ?? []).filter((a) => !(a.kciId && saved.has(a.kciId)));
+  const allChecked = savable.length > 0 && savable.every((a) => checked.has(keyOf(a)));
+  const toggle = (a: KciArticle) =>
+    setChecked((c) => {
+      const n = new Set(c);
+      if (n.has(keyOf(a))) n.delete(keyOf(a));
+      else n.add(keyOf(a));
+      return n;
+    });
+  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(savable.slice(0, BATCH_MAX).map(keyOf)));
+
+  function saveChecked() {
+    const picked = savable.filter((a) => checked.has(keyOf(a)));
+    if (picked.length > BATCH_MAX) {
+      toast.error(`한 번에 ${BATCH_MAX}개까지 저장할 수 있어요`, { description: `지금 ${picked.length}개를 골랐어요.` });
+      return;
+    }
+    setBusy("batch");
+    startTransition(async () => {
+      const r = await saveKciBatch(picked, projectId);
+      setBusy(null);
+      if (!r.ok) {
+        toast.error("저장하지 못했어요", { description: r.error });
+        return;
+      }
+      setSaved((s) => {
+        const n = new Set(s);
+        picked.forEach((a) => a.kciId && n.add(a.kciId));
+        return n;
+      });
+      setChecked(new Set());
+      r.added.forEach((x) => onSaved?.(x.id));
+      toast.success(`${r.added.length}개를 라이브러리에 저장했어요`, {
+        description: r.skipped ? `이미 있는 ${r.skipped}개는 건너뛰었어요.` : "출처는 ‘KCI 선행연구’로 표시돼요.",
+      });
     });
   }
 
@@ -171,16 +224,49 @@ export function KciSearch({
             </Button>
           </form>
 
+          {apiReady && (
+            <label className="flex w-fit items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={recent} onChange={(e) => setRecent(e.target.checked)} className="size-3.5 accent-primary" />
+              최근 논문 먼저 (발행 연도 순)
+            </label>
+          )}
+
           {results && (
             <div className="flex flex-col gap-2">
-              <p className="text-xs text-muted-foreground">
-                {total.toLocaleString()}건 중 {results.length}건
-              </p>
+              <div className="flex flex-wrap items-center gap-2 rounded-lg bg-secondary/60 px-3 py-2">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    onChange={toggleAll}
+                    disabled={!savable.length}
+                    className="size-4 accent-primary"
+                    aria-label="검색 결과 전체 선택"
+                  />
+                  전체 선택
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  {total.toLocaleString()}건 중 {results.length}건 · {checked.size}개 고름 (한 번에 최대 {BATCH_MAX}개)
+                </span>
+                <Button size="sm" className="ml-auto" onClick={saveChecked} disabled={!!busy || checked.size === 0}>
+                  {busy === "batch" ? <Loader2 className="animate-spin" /> : <Save />}
+                  {busy === "batch" ? "저장 중…" : `고른 ${checked.size}개 한꺼번에 저장`}
+                </Button>
+              </div>
               <ul className="flex flex-col divide-y rounded-lg border">
                 {results.map((a) => {
                   const done = !!a.kciId && saved.has(a.kciId);
                   return (
                     <li key={a.kciId || a.title} className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:items-center sm:gap-3">
+                      {!done && (
+                        <input
+                          type="checkbox"
+                          checked={checked.has(keyOf(a))}
+                          onChange={() => toggle(a)}
+                          className="size-4 shrink-0 accent-primary"
+                          aria-label={`${a.title} 고르기`}
+                        />
+                      )}
                       <div className="min-w-0 flex-1">
                         <a href={a.url} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">
                           {a.title}
@@ -206,6 +292,12 @@ export function KciSearch({
                 })}
                 {results.length === 0 && <li className="p-6 text-center text-muted-foreground">검색 결과가 없어요.</li>}
               </ul>
+              {results.length < total && (
+                <Button variant="outline" size="sm" className="self-center" onClick={() => load(page + 1)} disabled={!!busy}>
+                  {busy === "more" ? <Loader2 className="animate-spin" /> : <Search />}
+                  결과 {Math.min(KCI_PAGE_SIZE, total - results.length)}건 더 보기
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

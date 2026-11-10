@@ -129,6 +129,7 @@ async function ClassifyContent({ searchParams }: { searchParams: Promise<{ proje
         total={sources.length}
         basisProjectId={project?.id ?? null}
         basisName={project?.name}
+        kciPendingCount={pending.filter((s) => s.bib?.category === "KCI 선행연구").length}
       />
 
       {pending.length > 0 && (

@@ -18,6 +18,7 @@ export function BulkClassify({
   total,
   basisProjectId,
   basisName,
+  kciPendingCount = 0,
 }: {
   hasKey: boolean;
   pendingCount: number;
@@ -25,6 +26,8 @@ export function BulkClassify({
   /** 이 프로젝트의 연구 설정 기준으로 (없으면 자료마다 자기 프로젝트) */
   basisProjectId?: string | null;
   basisName?: string;
+  /** 아직 판단 안 한 KCI 선행연구 수 (있으면 'KCI 선행연구만' 버튼) */
+  kciPendingCount?: number;
 }) {
   const router = useRouter();
   const [progress, setProgress] = useState<{ done: number; total: number; failed: number; lastError?: string } | null>(null);
@@ -34,10 +37,10 @@ export function BulkClassify({
     stopRef.current = true;
   };
 
-  async function run(all: boolean) {
+  async function run(all: boolean, category?: string) {
     if (all && !window.confirm(`자료 ${total}개를 모두 AI가 다시 판단할까요? (연구자 확정 분류는 그대로 둬요)`)) return;
     stopRef.current = false;
-    const ids = await classifyTargets(all);
+    const ids = await classifyTargets(all, category);
     if (!ids.length) {
       toast.info("판단할 자료가 없어요");
       return;
@@ -88,6 +91,12 @@ export function BulkClassify({
             </Button>
           ) : (
             <>
+              {kciPendingCount > 0 && (
+                <Button size="sm" variant="secondary" disabled={!hasKey} onClick={() => run(false, "KCI 선행연구")}>
+                  <Sparkles />
+                  KCI 선행연구 {kciPendingCount}개만 판단
+                </Button>
+              )}
               <Button size="sm" disabled={!hasKey || pendingCount === 0} onClick={() => run(false)}>
                 <Sparkles />
                 미판단 {pendingCount}개 판단

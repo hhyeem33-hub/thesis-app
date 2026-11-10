@@ -109,9 +109,12 @@ export async function classifySourceAction(
 }
 
 /** 한꺼번에 분류할 자료 번호 (all=false 면 아직 AI 판단이 없는 것만) */
-export async function classifyTargets(all: boolean): Promise<string[]> {
+export async function classifyTargets(all: boolean, category?: string): Promise<string[]> {
   const sources = await getSources();
-  return sources.filter((s) => all || !s.classification || !s.classification.relevance).map((s) => s.id);
+  return sources
+    .filter((s) => !category || s.bib?.category === category)
+    .filter((s) => all || !s.classification || !s.classification.relevance)
+    .map((s) => s.id);
 }
 
 /** 예전 버튼용: 미분류를 10개씩 */

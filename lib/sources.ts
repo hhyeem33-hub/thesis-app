@@ -45,14 +45,32 @@ export async function getSource(id: string): Promise<Source | null> {
   return (await getSources()).find((s) => s.id === id) ?? null;
 }
 
+/** 내 컴퓨터 파일 저장을 한 번에 하나씩 (AI 판단을 4개씩 동시에 해도 서로 덮어쓰지 않게) */
+let saveQueue: Promise<unknown> = Promise.resolve();
+
 /** 새 자료는 추가하고, 같은 id가 있으면 바꾼다 */
 export async function saveSource(source: Source) {
   if (ONLINE) return dbSaveSource(source);
-  const list = (await readJson<Source[]>(SOURCES_FILE)) ?? [];
-  const i = list.findIndex((s) => s.id === source.id);
-  if (i >= 0) list[i] = source;
-  else list.push(source);
-  await writeJson(SOURCES_FILE, list);
+  const run = saveQueue.then(async () => {
+    const list = (await readJson<Source[]>(SOURCES_FILE)) ?? [];
+    const i = list.findIndex((s) => s.id === source.id);
+    if (i >= 0) list[i] = source;
+    else list.push(source);
+    // 임시 파일에 다 쓴 뒤 바꿔 끼운다 (쓰는 도중에 읽어도 깨진 파일을 보지 않게)
+    const tmp = `${SOURCES_FILE}.${process.pid}.tmp`;
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    const text = JSON.stringify(list, null, 2) + "\n";
+    await fs.writeFile(tmp, text, "utf8");
+    try {
+      await fs.rename(tmp, SOURCES_FILE);
+    } catch {
+      // 윈도우·원드라이브가 파일을 잠깐 잡고 있으면 바꿔 끼우기가 안 될 수 있다 → 바로 쓴다
+      await fs.writeFile(SOURCES_FILE, text, "utf8");
+      await fs.rm(tmp, { force: true });
+    }
+  });
+  saveQueue = run.catch(() => {});
+  return run;
 }
 
 export async function getResearch(): Promise<Research> {

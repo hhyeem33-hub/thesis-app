@@ -29,12 +29,16 @@ export async function lookupKci(urlOrId: string): Promise<Result<{ article: KciA
   }
 }
 
-/** KCI Open API 검색 — 키가 있고 내 컴퓨터일 때 */
-export async function searchKci(query: string): Promise<Result<{ total: number; items: KciArticle[] }>> {
+/** KCI Open API 검색 — 키가 있고 내 컴퓨터일 때 (recent: 최근 논문 먼저) */
+export async function searchKci(
+  query: string,
+  page = 1,
+  recent = true
+): Promise<Result<{ total: number; items: KciArticle[] }>> {
   const q = query.trim().slice(0, 100);
   if (!q) return { ok: false, error: "검색어를 적어 주세요." };
   try {
-    return { ok: true, ...(await searchKciApi(q)) };
+    return { ok: true, ...(await searchKciApi(q, Math.max(1, Math.floor(page)), recent)) };
   } catch (e) {
     return { ok: false, error: message(e) };
   }
@@ -46,61 +50,115 @@ export async function savedKciIds(): Promise<string[]> {
   return sources.map((s) => s.bib?.kciId || findKciId(s.origin) || "").filter(Boolean);
 }
 
-/** 라이브러리에 '선행연구'로 저장 */
+/** 라이브러리 자료에 붙는 출처 표시 */
+const KCI_CATEGORY = "KCI 선행연구";
+/** 한꺼번에 저장할 수 있는 최대 개수 */
+const BATCH_MAX = 50;
+
+const squash = (t: string) => t.replace(/\s+/g, "");
+const clean = (v: string | undefined) => (v ?? "").trim();
+
+/** KCI 논문 → 라이브러리 자료 (서지 정보·초록·출처 표시 포함) */
+function toSource(a: KciArticle, projectId: string | null): Source {
+  const kciId = findKciId(a.kciId || a.url) ?? "";
+  const now = new Date().toISOString();
+  const volIssue = a.volume ? `${a.volume}${a.issue ? `(${a.issue})` : ""}` : "";
+  const lines = [
+    `출처: ${KCI_CATEGORY}`,
+    `저자: ${a.authors || "[보완 필요]"}`,
+    `학술지: ${a.journal || "[보완 필요]"} ${volIssue}${a.pages ? `, ${a.pages}` : ""} (${a.year || "연도 [보완 필요]"})`,
+    a.publisher && `발행기관: ${a.publisher}`,
+    a.doi && `DOI: ${a.doi}`,
+    a.keywords && `키워드: ${a.keywords}`,
+    a.abstract && `\n초록\n${a.abstract}`,
+  ].filter(Boolean);
+  return {
+    id: randomUUID(),
+    projectId,
+    title: a.title.trim().slice(0, 200),
+    type: "web",
+    origin: (a.url || (kciId ? kciDetailUrl(kciId) : "")).slice(0, 1000),
+    content: lines.join("\n"),
+    createdAt: now,
+    updatedAt: now,
+    classification: null,
+    bib: {
+      kind: "article",
+      authors: clean(a.authors),
+      year: clean(a.year),
+      journal: clean(a.journal),
+      volume: clean(a.volume),
+      issue: clean(a.issue),
+      pages: clean(a.pages),
+      publisher: clean(a.publisher),
+      place: "",
+      doi: clean(a.doi),
+      kciId,
+      category: KCI_CATEGORY,
+    },
+  };
+}
+
+/** 이미 있는 논문인지 (KCI 번호 또는 띄어쓰기 뺀 제목이 같으면) */
+function duplicateOf(sources: Source[], a: KciArticle) {
+  const kciId = findKciId(a.kciId || a.url) ?? "";
+  const title = squash(a.title);
+  return sources.find(
+    (s) => (kciId && (s.bib?.kciId === kciId || s.origin.includes(kciId))) || squash(s.title) === title
+  );
+}
+
+async function projectOrNull(projectId: string) {
+  const projects = await getProjects();
+  return projects.find((p) => p.id === projectId)?.id ?? null;
+}
+
+function refreshLists() {
+  revalidatePath("/sources");
+  revalidatePath("/dashboard");
+  revalidatePath("/kci");
+  revalidatePath("/classify");
+}
+
+/** 라이브러리에 'KCI 선행연구'로 저장 (하나) */
 export async function saveKciToLibrary(a: KciArticle, projectId: string): Promise<Result<{ id: string; duplicate?: boolean }>> {
-  const title = a.title.trim();
-  if (!title) return { ok: false, error: "논문 제목을 적어 주세요." };
+  if (!a.title.trim()) return { ok: false, error: "논문 제목을 적어 주세요." };
+  try {
+    const dup = duplicateOf(await getSources(), a);
+    if (dup) return { ok: true, id: dup.id, duplicate: true };
+    const source = toSource(a, await projectOrNull(projectId));
+    await saveSource(source);
+    refreshLists();
+    return { ok: true, id: source.id };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** 검색 결과 여러 개를 한꺼번에 저장 — 한 번에 최대 50개, 이미 있는 논문은 건너뜀 */
+export async function saveKciBatch(
+  articles: KciArticle[],
+  projectId: string
+): Promise<Result<{ added: { id: string; kciId: string }[]; skipped: number }>> {
+  if (!articles.length) return { ok: false, error: "저장할 논문을 골라 주세요." };
+  if (articles.length > BATCH_MAX) return { ok: false, error: `한 번에 ${BATCH_MAX}개까지 저장할 수 있어요.` };
   try {
     const sources = await getSources();
-    const kciId = findKciId(a.kciId || a.url) ?? "";
-    const dup = sources.find(
-      (s) =>
-        (kciId && (s.bib?.kciId === kciId || s.origin.includes(kciId))) ||
-        s.title.replace(/\s+/g, "") === title.replace(/\s+/g, "")
-    );
-    if (dup) return { ok: true, id: dup.id, duplicate: true };
-
-    const projects = await getProjects();
-    const project = projects.find((p) => p.id === projectId) ?? null;
-    const now = new Date().toISOString();
-    const lines = [
-      `저자: ${a.authors || "[보완 필요]"}`,
-      `학술지: ${a.journal || "[보완 필요]"} ${a.volume ? `${a.volume}${a.issue ? `(${a.issue})` : ""}` : ""}${a.pages ? `, ${a.pages}` : ""} (${a.year || "연도 [보완 필요]"})`,
-      a.publisher && `발행기관: ${a.publisher}`,
-      a.doi && `DOI: ${a.doi}`,
-      a.keywords && `키워드: ${a.keywords}`,
-      a.abstract && `\n초록\n${a.abstract}`,
-    ].filter(Boolean);
-    const source: Source = {
-      id: randomUUID(),
-      projectId: project?.id ?? null,
-      title: title.slice(0, 200),
-      type: "web",
-      origin: (a.url || (kciId ? kciDetailUrl(kciId) : "")).slice(0, 1000),
-      content: lines.join("\n"),
-      createdAt: now,
-      updatedAt: now,
-      classification: null,
-      bib: {
-        kind: "article",
-        authors: a.authors.trim(),
-        year: a.year.trim(),
-        journal: a.journal.trim(),
-        volume: a.volume.trim(),
-        issue: a.issue.trim(),
-        pages: a.pages.trim(),
-        publisher: a.publisher.trim(),
-        place: "",
-        doi: a.doi.trim(),
-        kciId,
-        category: "선행연구",
-      },
-    };
-    await saveSource(source);
-    revalidatePath("/sources");
-    revalidatePath("/dashboard");
-    revalidatePath("/kci");
-    return { ok: true, id: source.id };
+    const project = await projectOrNull(projectId);
+    const added: { id: string; kciId: string }[] = [];
+    let skipped = 0;
+    for (const a of articles) {
+      if (!a.title?.trim() || duplicateOf(sources, a)) {
+        skipped++;
+        continue;
+      }
+      const source = toSource(a, project);
+      await saveSource(source);
+      sources.push(source); // 같은 묶음 안의 중복도 막는다
+      added.push({ id: source.id, kciId: source.bib?.kciId ?? "" });
+    }
+    if (added.length) refreshLists();
+    return { ok: true, added, skipped };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

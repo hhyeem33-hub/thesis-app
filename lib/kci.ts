@@ -116,7 +116,15 @@ const tag = (xml: string, name: string) => decode(xml.match(new RegExp(`<${name}
 const tags = (xml: string, name: string) =>
   [...xml.matchAll(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, "g"))].map((m) => decode(m[1])).filter(Boolean);
 
-export async function searchKciApi(query: string, page = 1): Promise<{ total: number; items: KciArticle[] }> {
+/** 한 번에 가져오는 검색 결과 수 (KCI API 최대 100) */
+export const KCI_PAGE_SIZE = 50;
+
+export async function searchKciApi(
+  query: string,
+  page = 1,
+  /** true 면 최근 논문(발행 연도 내림차순) 먼저 */
+  recent = false
+): Promise<{ total: number; items: KciArticle[] }> {
   if (ONLINE) throw new Error("KCI 키 검색은 신청한 집 IP에서만 돼서 내 컴퓨터에서만 쓸 수 있어요.");
   const key = await getKciKey();
   if (!key) throw new Error("설정에서 KCI API 키를 먼저 넣어 주세요.");
@@ -125,8 +133,9 @@ export async function searchKciApi(query: string, page = 1): Promise<{ total: nu
     apiCode: "articleSearch",
     key,
     title: query,
-    displayCount: "20",
+    displayCount: String(KCI_PAGE_SIZE),
     page: String(page),
+    ...(recent ? { sortNm: "pubiYr", sortDir: "desc" } : {}),
   }).toString();
   let xml: string;
   try {
@@ -139,6 +148,7 @@ export async function searchKciApi(query: string, page = 1): Promise<{ total: nu
     throw new Error("KCI가 이 컴퓨터의 접속을 막았어요. API를 신청한 IP(집 인터넷)에서 실행해 주세요.");
   const err = tag(xml, "error") || tag(xml, "errMsg") || tag(xml, "resultMsg");
   const records = [...xml.matchAll(/<record>([\s\S]*?)<\/record>/g)].map((m) => m[1]);
+  if (!records.length && /no\s*data/i.test(err)) return { total: 0, items: [] }; // 검색 결과 없음
   if (!records.length && err) throw new Error(`KCI API 오류: ${err}`);
   const items = records.map((r) => {
     const id = r.match(/article-id="(ART\d+)"/)?.[1] ?? findKciId(r) ?? "";
