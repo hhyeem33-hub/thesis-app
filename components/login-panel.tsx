@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useSearchParams } from "next/navigation";
-import { Loader2, MailCheck, Send } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff, Loader2, LogIn, MailCheck } from "lucide-react";
 import { toast } from "sonner";
-import { googleLoginUrl, sendLoginLink } from "@/app/auth-actions";
+import { googleLoginUrl, loginOptions, passwordLogin, sendLoginLink } from "@/app/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,16 +20,45 @@ function GoogleIcon() {
   );
 }
 
-/** 로그인 칸: 구글로 시작하기 + 이메일 링크 로그인 */
+/** 로그인 칸: 이메일 + 비밀번호 (처음이면 바로 가입), 구글(켜져 있을 때만), 이메일 링크(작은 글씨) */
 export function LoginPanel() {
+  const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
-  const [sentTo, setSentTo] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"google" | "email" | null>(null);
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+  const [google, setGoogle] = useState(false);
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"login" | "google" | "link" | null>(null);
   const [, startTransition] = useTransition();
   const error = params.get("error");
 
-  function google() {
+  // 구글 로그인은 슈파베이스에서 켰을 때만 버튼을 보여 준다
+  useEffect(() => {
+    let alive = true;
+    loginOptions().then((o) => alive && setGoogle(o.google)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function login(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy("login");
+    startTransition(async () => {
+      const r = await passwordLogin(email, password);
+      if (!r.ok) {
+        setBusy(null);
+        toast.error("들어가지 못했어요", { description: r.error });
+        return;
+      }
+      toast.success(r.created ? "새 계정을 만들고 들어왔어요" : "로그인했어요");
+      router.replace("/dashboard");
+      router.refresh();
+    });
+  }
+
+  function googleLogin() {
     setBusy("google");
     startTransition(async () => {
       const r = await googleLoginUrl();
@@ -42,17 +71,17 @@ export function LoginPanel() {
     });
   }
 
-  function sendLink(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy("email");
+  function sendLink() {
+    if (!email.trim()) {
+      toast.info("위 칸에 이메일을 먼저 적어 주세요");
+      return;
+    }
+    setBusy("link");
     startTransition(async () => {
       const r = await sendLoginLink(email);
       setBusy(null);
-      if (!r.ok) {
-        toast.error("로그인 메일을 보내지 못했어요", { description: r.error });
-        return;
-      }
-      setSentTo(email.trim());
+      if (!r.ok) toast.error("로그인 메일을 보내지 못했어요", { description: r.error });
+      else setLinkSentTo(email.trim());
     });
   }
 
@@ -60,58 +89,84 @@ export function LoginPanel() {
     <div className="flex flex-col gap-4 rounded-xl border border-gold/40 bg-card/90 p-6 shadow-sm backdrop-blur">
       <div>
         <p className="font-serif text-xl font-bold">시작하기</p>
-        <p className="text-sm text-muted-foreground">처음이면 로그인할 때 내 계정이 만들어져요.</p>
+        <p className="text-sm text-muted-foreground">처음 쓰는 이메일이면 계정이 바로 만들어져요.</p>
       </div>
 
       {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
 
-      <Button size="lg" variant="outline" className="h-11 bg-background" onClick={google} disabled={!!busy}>
-        {busy === "google" ? <Loader2 className="animate-spin" /> : <GoogleIcon />}
-        Google로 시작하기
-      </Button>
-
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        또는 이메일로
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      {sentTo ? (
-        <div className="flex flex-col gap-2 rounded-lg bg-success/10 p-4 text-sm">
-          <p className="inline-flex items-center gap-2 font-medium">
-            <MailCheck className="size-4 text-success" />
-            로그인 링크를 보냈어요
-          </p>
-          <p className="text-muted-foreground">
-            <b className="text-foreground">{sentTo}</b> 메일함에서 &lsquo;Log In&rsquo; 링크를 눌러 주세요. 이 브라우저에서
-            열어야 로그인돼요. (메일이 안 보이면 스팸함도 확인해 주세요)
-          </p>
-          <button type="button" className="w-fit text-xs underline" onClick={() => setSentTo(null)}>
-            다른 이메일로 보내기
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={sendLink} className="flex flex-col gap-2">
+      <form onSubmit={login} className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
           <Label htmlFor="login-email" className="text-xs">
-            이메일 주소
+            이메일
           </Label>
-          <div className="flex gap-2">
+          <Input
+            id="login-email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="name@example.com"
+            className="h-10 bg-background"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="login-password" className="text-xs">
+            비밀번호 <span className="text-muted-foreground">(6자 이상)</span>
+          </Label>
+          <div className="relative">
             <Input
-              id="login-email"
-              type="email"
-              autoComplete="email"
+              id="login-password"
+              type={show ? "text" : "password"}
+              autoComplete="current-password"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-10 bg-background pr-10"
             />
-            <Button type="submit" disabled={!!busy || !email.trim()}>
-              {busy === "email" ? <Loader2 className="animate-spin" /> : <Send />}
-              링크 받기
-            </Button>
+            <button
+              type="button"
+              onClick={() => setShow((v) => !v)}
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+              aria-label={show ? "비밀번호 가리기" : "비밀번호 보기"}
+            >
+              {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
           </div>
-          <p className="text-xs text-muted-foreground">비밀번호 없이, 메일로 온 링크를 누르면 로그인돼요.</p>
-        </form>
+        </div>
+        <Button type="submit" size="lg" className="h-11" disabled={!!busy || !email.trim() || password.length < 6}>
+          {busy === "login" ? <Loader2 className="animate-spin" /> : <LogIn />}
+          {busy === "login" ? "들어가는 중…" : "들어가기"}
+        </Button>
+      </form>
+
+      {google && (
+        <>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            또는
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <Button size="lg" variant="outline" className="h-11 bg-background" onClick={googleLogin} disabled={!!busy}>
+            {busy === "google" ? <Loader2 className="animate-spin" /> : <GoogleIcon />}
+            Google로 시작하기
+          </Button>
+        </>
+      )}
+
+      {linkSentTo ? (
+        <p className="inline-flex items-start gap-1.5 text-xs text-muted-foreground">
+          <MailCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
+          {linkSentTo} 로 로그인 링크를 보냈어요. 이 브라우저에서 메일의 링크를 눌러 주세요.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          비밀번호 없이 들어가려면{" "}
+          <button type="button" onClick={sendLink} disabled={!!busy} className="underline underline-offset-2 hover:text-foreground">
+            {busy === "link" ? "보내는 중…" : "이메일 링크로 들어가기"}
+          </button>
+        </p>
       )}
     </div>
   );

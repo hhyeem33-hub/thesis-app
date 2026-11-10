@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import { AiSettingsCard } from "@/components/ai-settings-card";
 import { KciSettingsCard } from "@/components/kci-settings-card";
+import { PasswordCard } from "@/components/password-card";
+import { currentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { SettingsSkeleton } from "@/components/page-skeletons";
 import { SettingsForm } from "@/components/settings-form";
@@ -26,8 +28,10 @@ export default function SettingsPage() {
 
 async function SettingsContent() {
   await connection();
+  const user = await currentUser();
   return (
     <div className="flex flex-col gap-4">
+      {user && <PasswordCard email={user.email} />}
       <SettingsForm initial={await getSettings()} />
       <AiSettingsCard status={await getAiKeyStatus()} onVercel={ONLINE} />
       <KciSettingsCard status={await getKciKeyStatus()} online={ONLINE} />
