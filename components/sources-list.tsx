@@ -179,7 +179,7 @@ export function SourcesList({ sources, hasKey }: { sources: SourceListItem[]; ha
               <TableHead className="pr-4 text-right">연구자 판단</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="reveal-list">
             {shown.map((s) => {
               const topic = topicOf(s.classification);
               const status = s.classification?.decision?.status ?? null;

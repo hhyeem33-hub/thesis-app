@@ -37,8 +37,8 @@ export function TimelineChart({ items, unknown }: { items: TimelineItem[]; unkno
   return (
     <div className="flex flex-col gap-5">
       <div className="overflow-x-auto">
-        <div className="flex h-56 min-w-fit items-end gap-1.5 border-b px-1" role="group" aria-label="발행 연도별 자료 수">
-          {span.map((y) => {
+        <div className="flex h-64 min-w-fit items-end gap-1.5 border-b px-1 pt-9" role="group" aria-label="발행 연도별 자료 수">
+          {span.map((y, i) => {
             const n = count.get(y) ?? 0;
             return (
               <button
@@ -49,17 +49,29 @@ export function TimelineChart({ items, unknown }: { items: TimelineItem[]; unkno
                 aria-label={`${y}년 ${n}개`}
                 aria-pressed={picked === y}
                 title={`${y}년 · ${n}개`}
-                className="group flex h-full w-9 flex-col items-center justify-end gap-1 disabled:cursor-default"
+                className="group relative flex h-full w-9 flex-col items-center justify-end gap-1 disabled:cursor-default"
               >
-                {n > 0 && <span className="text-xs tabular-nums text-muted-foreground">{n}</span>}
+                {n > 0 && (
+                  <span className={cn("text-xs tabular-nums", picked === y ? "font-semibold text-foreground" : "text-muted-foreground")}>{n}</span>
+                )}
                 <span
                   className={cn(
-                    "w-6 rounded-t transition-colors",
-                    picked === y ? "bg-primary" : "bg-gold/60 group-hover:bg-primary/70",
+                    "grow-y w-6 rounded-t-md transition-[filter,transform,box-shadow] duration-200 group-hover:brightness-110 group-hover:-translate-y-0.5",
+                    picked === y && "ring-2 ring-foreground/70 ring-offset-2 ring-offset-card",
                     !n && "bg-transparent"
                   )}
-                  style={{ height: n ? `${Math.max(4, (n / max) * 100)}%` : 0 }}
+                  style={{
+                    height: n ? `${Math.max(4, (n / max) * 100)}%` : 0,
+                    // 자료가 많은 해일수록 진한 색 (등급 색과 같은 베이지·브라운 계열)
+                    background: n ? `var(--grade-${Math.min(5, 1 + Math.ceil((n / max) * 4))})` : undefined,
+                    animationDelay: `${Math.min(i, 30) * 25}ms`,
+                  }}
                 />
+                {n > 0 && (
+                  <span className="pointer-events-none absolute -top-8 z-10 rounded-md bg-foreground px-2 py-1 text-xs whitespace-nowrap text-background opacity-0 shadow transition-opacity group-hover:opacity-100">
+                    {y}년 · {n}개
+                  </span>
+                )}
               </button>
             );
           })}

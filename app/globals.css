@@ -37,6 +37,21 @@
   --chart-4: oklch(0.8 0.05 75);
   --chart-5: oklch(0.6 0.04 60);
   --radius: 0.625rem;
+  /* 관련도 등급 색: 5 가장 진함 → 1 가장 연함 (베이지·브라운 한 계열) */
+  --grade-5: oklch(0.36 0.05 52);
+  --grade-4: oklch(0.5 0.08 58);
+  --grade-3: oklch(0.64 0.085 68);
+  --grade-2: oklch(0.78 0.06 74);
+  --grade-1: oklch(0.89 0.03 78);
+  /* 여러 항목을 나눌 때 쓰는 베이지 계열 색 (도넛·비율 막대) */
+  --cat-1: oklch(0.42 0.06 52);
+  --cat-2: oklch(0.63 0.085 68);
+  --cat-3: oklch(0.56 0.07 35);
+  --cat-4: oklch(0.6 0.05 110);
+  --cat-5: oklch(0.74 0.06 78);
+  --cat-6: oklch(0.5 0.04 80);
+  --cat-7: oklch(0.82 0.04 60);
+  --cat-8: oklch(0.68 0.03 40);
   --sidebar: var(--sand);
   --sidebar-foreground: var(--brown);
   --sidebar-primary: var(--gold);
@@ -145,5 +160,101 @@
   h2,
   h3 {
     @apply font-heading;
+  }
+}
+/* ── 움직임 (보는 순간 인상) ─────────────────────────────────────────────
+   화면이 바뀔 때 부드럽게 나타나기, 목록이 차례로 나타나기, 카드·버튼이 살짝 떠오르기, 막대가 자라기.
+   움직임 줄이기를 켠 사람에게는 모두 끈다. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+.animate-page {
+  animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.reveal-list > * {
+  animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: 0.36s;
+}
+.reveal-list > *:nth-child(1) { animation-delay: 0s; }
+.reveal-list > *:nth-child(2) { animation-delay: 0.03s; }
+.reveal-list > *:nth-child(3) { animation-delay: 0.06s; }
+.reveal-list > *:nth-child(4) { animation-delay: 0.09s; }
+.reveal-list > *:nth-child(5) { animation-delay: 0.12s; }
+.reveal-list > *:nth-child(6) { animation-delay: 0.15s; }
+.reveal-list > *:nth-child(7) { animation-delay: 0.18s; }
+.reveal-list > *:nth-child(8) { animation-delay: 0.21s; }
+.reveal-list > *:nth-child(9) { animation-delay: 0.24s; }
+.reveal-list > *:nth-child(10) { animation-delay: 0.27s; }
+.reveal-list > *:nth-child(11) { animation-delay: 0.3s; }
+.reveal-list > *:nth-child(12) { animation-delay: 0.33s; }
+.grow-x {
+  transform-origin: left;
+  animation: grow-x 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.grow-y {
+  transform-origin: bottom;
+  animation: grow-y 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* 카드: 묶음(그리드) 안 카드와 링크 카드에 마우스를 올리면 살짝 떠오름 (큰 편집 카드는 그대로) */
+.grid > [data-slot="card"],
+a > [data-slot="card"],
+.grid > a > [data-slot="card"],
+.lift {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.grid > [data-slot="card"]:hover,
+a:hover > [data-slot="card"],
+.lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px -14px color-mix(in oklch, var(--brown) 45%, transparent);
+}
+/* 버튼: 살짝 떠오름 */
+[data-slot="button"] {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+[data-slot="button"]:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px -10px color-mix(in oklch, var(--brown) 60%, transparent);
+}
+[data-slot="button"]:not(:disabled):active {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-page,
+  .reveal-list > *,
+  .grow-x,
+  .grow-y {
+    animation: none;
+  }
+  .grid > [data-slot="card"]:hover,
+  a:hover > [data-slot="card"],
+  .lift:hover,
+  [data-slot="button"]:not(:disabled):hover {
+    transform: none;
   }
 }

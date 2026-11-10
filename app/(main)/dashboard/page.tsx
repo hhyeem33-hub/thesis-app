@@ -1,7 +1,10 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { connection } from "next/server";
+import { BookAlert, CircleCheck, CircleHelp, CirclePause, CircleX, Gauge, Library, Star, type LucideIcon } from "lucide-react";
 import { BarChart } from "@/components/bar-chart";
+import { CountUp } from "@/components/count-up";
+import { DonutChart, GradeColumns, RatioBar } from "@/components/fancy-charts";
 import { DataError } from "@/components/data-error";
 import { GradeBadge } from "@/components/grade-badge";
 import { PageHeader } from "@/components/page-header";
@@ -34,22 +37,40 @@ export default function DashboardPage() {
 function StatCard({
   label,
   value,
+  decimals = 0,
   unit,
   note,
   href,
+  icon: Icon,
+  tone = "brown",
 }: {
   label: string;
-  value: string;
+  /** 숫자면 0부터 올라가는 애니메이션, 글자(—)면 그대로 */
+  value: number | string;
+  decimals?: number;
   unit?: string;
   note: string;
   href?: string;
+  icon: LucideIcon;
+  tone?: "brown" | "gold" | "success" | "muted";
 }) {
+  const toneClass = {
+    brown: "bg-primary/12 text-primary",
+    gold: "bg-gold/20 text-gold",
+    success: "bg-success/12 text-success",
+    muted: "bg-muted text-muted-foreground",
+  }[tone];
   const body = (
     <Card className="h-full transition-colors hover:bg-accent/40">
       <CardHeader>
-        <CardDescription>{label}</CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <CardDescription>{label}</CardDescription>
+          <span className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${toneClass}`}>
+            <Icon className="size-[18px]" />
+          </span>
+        </div>
         <CardTitle className="font-heading text-3xl tabular-nums">
-          {value}
+          {typeof value === "number" ? <CountUp value={value} decimals={decimals} /> : value}
           {unit && <span className="ml-1 text-base font-normal text-muted-foreground">{unit}</span>}
         </CardTitle>
       </CardHeader>
@@ -104,7 +125,7 @@ async function DashboardContent() {
     { label: SOURCE_TYPE_LABEL.ai, value: aiCount },
   ];
   const gradeData = [5, 4, 3, 2, 1].map((g) => ({
-    label: `${g}등급`,
+    grade: g,
     value: classified.filter((s) => s.classification!.relevance === g).length,
   }));
 
@@ -113,28 +134,36 @@ async function DashboardContent() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="전체 자료 수"
-          value={String(sources.length + aiCount)}
+          icon={Library}
+          value={sources.length + aiCount}
           unit="개"
           note={`원문 ${sources.length}개 · AI 생성물 ${aiCount}개`}
           href="/sources"
         />
         <StatCard
           label="평균 논문 관련도"
-          value={avg === null ? "—" : avg.toFixed(1)}
+          icon={Gauge}
+          tone="gold"
+          value={avg === null ? "—" : Number(avg.toFixed(1))}
+          decimals={1}
           unit="/ 5"
           note={classified.length ? `분류한 자료 ${classified.length}개 기준` : "아직 AI 분류한 자료가 없어요"}
           href="/classify"
         />
         <StatCard
           label="핵심 자료"
-          value={String(core)}
+          icon={Star}
+          tone="gold"
+          value={core}
           unit="개"
           note="관련도 4~5등급"
           href="/classify"
         />
         <StatCard
           label="미확인 출처"
-          value={String(unverified)}
+          icon={CircleHelp}
+          tone="muted"
+          value={unverified}
           unit="개"
           note="출처(주소·서지)를 아예 적지 않은 자료"
           href="/sources"
@@ -142,12 +171,14 @@ async function DashboardContent() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="채택" value={String(adopted)} unit="개" note="연구자가 확정한 자료" href="/sources" />
-        <StatCard label="보류" value={String(held)} unit="개" note="나중에 다시 볼 자료" href="/sources" />
-        <StatCard label="제외" value={String(excluded)} unit="개" note="논문에 쓰지 않을 자료" href="/sources" />
+        <StatCard label="채택" icon={CircleCheck} tone="success" value={adopted} unit="개" note="연구자가 확정한 자료" href="/sources" />
+        <StatCard label="보류" icon={CirclePause} tone="gold" value={held} unit="개" note="나중에 다시 볼 자료" href="/sources" />
+        <StatCard label="제외" icon={CircleX} tone="muted" value={excluded} unit="개" note="논문에 쓰지 않을 자료" href="/sources" />
         <StatCard
           label="서지 보완 필요"
-          value={String(needBib)}
+          icon={BookAlert}
+          tone="brown"
+          value={needBib}
           unit="개"
           note="참고문헌에 [보완 필요]가 남는 자료"
           href="/sources"
@@ -171,7 +202,7 @@ async function DashboardContent() {
           </CardHeader>
           <CardContent>
             {topicData.length ? (
-              <BarChart data={topicData} />
+              <DonutChart data={topicData} centerLabel="자료" />
             ) : (
               <p className="text-sm text-muted-foreground">AI 판단을 하면 토픽이 생겨요.</p>
             )}
@@ -183,7 +214,7 @@ async function DashboardContent() {
             <CardDescription>원문 + AI 생성물 {sources.length + aiCount}개</CardDescription>
           </CardHeader>
           <CardContent>
-            <BarChart data={typeData} showPercent />
+            <RatioBar data={typeData} />
           </CardContent>
         </Card>
         <Card>
@@ -192,7 +223,9 @@ async function DashboardContent() {
             <CardDescription>5등급이 내 연구와 가장 가까워요</CardDescription>
           </CardHeader>
           <CardContent>
-            <BarChart data={gradeData} />
+            <div className="pb-6">
+              <GradeColumns data={gradeData} />
+            </div>
           </CardContent>
         </Card>
       </div>

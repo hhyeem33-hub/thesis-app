@@ -37,8 +37,10 @@ export function BarChart({
           <span className="truncate text-muted-foreground">{d.label}</span>
           <div className="h-3 rounded-r bg-muted/60">
             <div
-              className="h-full rounded-r bg-primary transition-[width,opacity] duration-300"
+              className="grow-x h-full rounded-r bg-primary transition-[width,opacity] duration-300"
               style={{
+                animationDelay: `${i * 60}ms`,
+                background: `var(--cat-${(i % 8) + 1})`,
                 width: `${(d.value / max) * 100}%`,
                 minWidth: d.value ? 4 : 0,
                 opacity: hover === null || hover === i ? 1 : 0.45,

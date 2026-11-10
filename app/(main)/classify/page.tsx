@@ -141,7 +141,7 @@ async function ClassifyContent({ searchParams }: { searchParams: Promise<{ proje
             <CardDescription>하나씩 하려면 ‘AI 분류’, 한꺼번에 하려면 위 버튼을 눌러요.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="flex max-h-72 flex-col divide-y overflow-y-auto text-sm">
+            <ul className="reveal-list flex max-h-72 flex-col divide-y overflow-y-auto text-sm">
               {pending.slice(0, 50).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 py-2">
                   <Link href={`/sources/${s.id}`} className="truncate hover:underline">
@@ -166,7 +166,7 @@ async function ClassifyContent({ searchParams }: { searchParams: Promise<{ proje
           {done.length === 0 ? (
             <p className="text-sm text-muted-foreground">아직 없어요.</p>
           ) : (
-            <ul className="flex flex-col divide-y text-sm">
+            <ul className="reveal-list flex flex-col divide-y text-sm">
               {[...done]
                 .sort((a, b) => b.classification!.relevance - a.classification!.relevance)
                 .map((s) => {
