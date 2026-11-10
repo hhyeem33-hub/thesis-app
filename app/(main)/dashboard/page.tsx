@@ -6,6 +6,7 @@ import { DataError } from "@/components/data-error";
 import { GradeBadge } from "@/components/grade-badge";
 import { PageHeader } from "@/components/page-header";
 import { ProjectsSkeleton } from "@/components/page-skeletons";
+import { ResearchFirstBanner } from "@/components/research-first-banner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatReference, NEED } from "@/lib/bib";
 import { countAiOutputs, getResearch, getSources } from "@/lib/sources";
@@ -19,6 +20,9 @@ const dateFormat = new Intl.DateTimeFormat("ko-KR", {
 export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
+      <Suspense fallback={null}>
+        <ResearchFirstBanner />
+      </Suspense>
       <PageHeader title="대시보드" description="모은 자료와 AI 분류 결과를 한눈에 봐요." />
       <Suspense fallback={<ProjectsSkeleton />}>
         <DashboardContent />

@@ -171,8 +171,6 @@ export async function updateSettings(input: {
 
 export async function saveAiKey(apiKey: string): Promise<ActionResult> {
   const key = apiKey.trim();
-  if (ON_VERCEL)
-    return { ok: false, error: "버셀에서는 키를 여기 저장할 수 없어요. 버셀의 환경 변수 ANTHROPIC_API_KEY에 넣어 주세요." };
   if (!key.startsWith("sk-ant-"))
     return { ok: false, error: "Claude API 키는 ‘sk-ant-’로 시작해요. 키를 다시 확인해 주세요." };
   try {
@@ -186,7 +184,6 @@ export async function saveAiKey(apiKey: string): Promise<ActionResult> {
 }
 
 export async function removeAiKey(): Promise<ActionResult> {
-  if (ON_VERCEL) return { ok: false, error: "버셀에서는 환경 변수에서 지워 주세요." };
   await deleteApiKey();
   revalidatePath("/settings");
   return { ok: true };

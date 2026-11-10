@@ -4,7 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center">
+    <div className="m-6 flex min-h-[60vh] flex-col items-center justify-center gap-3 rounded-xl border border-dashed p-12 text-center">
       <SearchX className="size-10 text-muted-foreground" />
       <p className="text-lg font-medium">없는 화면이에요</p>
       <p className="text-sm text-muted-foreground">

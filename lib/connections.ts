@@ -1,6 +1,7 @@
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { aiErrorMessage, getAiKeyStatus, testConnection } from "./ai";
+import { currentUser } from "./auth";
 import { ONLINE } from "./db";
 import { getKciKeyStatus, searchKciApi } from "./kci";
 import { getSettings, isDirectory } from "./store";
@@ -60,12 +61,16 @@ async function checkSupabase(): Promise<CheckResult> {
         };
   try {
     const db = createClient(url!, key!, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { count, error } = await withTimeout(Promise.resolve(db.from("sources").select("id", { count: "exact", head: true })));
+    // 온라인은 여러 사람이 쓰므로 "내 자료" 수만 센다
+    const uid = ONLINE ? (await currentUser())?.id : null;
+    let q = db.from("sources").select("id", { count: "exact", head: true });
+    if (uid) q = q.eq("user_id", uid);
+    const { count, error } = await withTimeout(Promise.resolve(q));
     if (error) throw new Error(error.message);
     return {
       ...base,
       state: "ok",
-      summary: `연결됨 · 온라인 자료 ${count ?? 0}개`,
+      summary: `연결됨 · ${uid ? "내" : "온라인"} 자료 ${count ?? 0}개`,
       detail: ONLINE ? "온라인(버셀) 저장소로 쓰는 중" : "db:push 로 내 컴퓨터 자료를 올릴 수 있어요",
     };
   } catch (e) {
@@ -77,7 +82,9 @@ async function checkClaude(): Promise<CheckResult> {
   const base = { id: "claude" as const, name: "Claude API (AI 판단·초안)", fixHref: "/settings" };
   const status = await getAiKeyStatus();
   if (status.source === "none")
-    return { ...base, state: "fail", summary: "API 키가 없어요", detail: "설정 → AI 연결에서 키를 넣어 주세요. (버셀은 환경 변수 ANTHROPIC_API_KEY)" };
+    return ONLINE
+      ? { ...base, state: "off", summary: "규칙 기반으로 동작 중", detail: "AI 키가 없어서 AI 판단 대신 연구 설정 키워드가 겹치는 정도로 등급을 매겨요. 설정 → AI 연결에서 내 키를 넣으면 Claude가 판단해요." }
+      : { ...base, state: "fail", summary: "API 키가 없어요", detail: "설정 → AI 연결에서 키를 넣어 주세요. (버셀은 환경 변수 ANTHROPIC_API_KEY)" };
   try {
     const name = await withTimeout(testConnection());
     return { ...base, state: "ok", summary: `연결됨 · ${name}`, detail: `키 끝자리 …${status.last4} (${status.source === "env" ? "환경 변수" : "설정에 저장"})` };

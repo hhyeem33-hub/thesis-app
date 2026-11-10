@@ -3,12 +3,17 @@ import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { currentUser } from "./auth";
+import { dbGetUserAiKey, dbSaveUserAiKey } from "./db";
+import { ONLINE } from "./online";
 
 // ⚠️ API 키 보호
 // - 버셀에서는 환경 변수 ANTHROPIC_API_KEY 를 쓴다 (코드·깃허브에 키를 넣지 않음).
 // - 내 컴퓨터에서는 설정 화면에서 넣은 키를 data/ai-key.json 에 저장한다.
 //   data/*.json 은 .gitignore 에 있어서 깃허브에 올라가지 않는다.
 // - 키 원문은 절대 화면(브라우저)으로 보내지 않는다. 끝 4자리만 보여 준다.
+// - 온라인(여러 사람이 씀): 버셀의 키는 주인 계정(OWNER_EMAIL)만 쓴다. 다른 사람은 설정에서 자기 키를 넣고
+//   (슈파베이스 user_settings, 본인만), 키가 없으면 AI 대신 규칙 기반 분류로 동작한다.
 
 /** 비용이 가장 적은 모델 */
 export const AI_MODEL = "claude-haiku-5-5";
@@ -37,11 +42,25 @@ function envApiKey() {
   return key?.startsWith("sk-ant-") ? key : "";
 }
 
+/** 온라인에서 지금 로그인한 사람이 쓸 수 있는 키: 주인 → 버셀 키, 그 밖의 사람 → 자기가 저장한 키 */
+async function onlineKey(): Promise<{ key: string; source: AiKeyStatus["source"] }> {
+  const user = await currentUser();
+  if (!user) return { key: "", source: "none" };
+  if (user.isOwner && envApiKey()) return { key: envApiKey(), source: "env" };
+  const own = await dbGetUserAiKey().catch(() => "");
+  return own ? { key: own, source: "saved" } : { key: "", source: "none" };
+}
+
 async function getApiKey(): Promise<string> {
+  if (ONLINE) return (await onlineKey()).key;
   return envApiKey() || (await readSavedKey());
 }
 
 export async function getAiKeyStatus(): Promise<AiKeyStatus> {
+  if (ONLINE) {
+    const { key, source } = await onlineKey();
+    return key ? { source, last4: key.slice(-4) } : { source: "none" };
+  }
   const envKey = envApiKey();
   if (envKey) return { source: "env", last4: envKey.slice(-4) };
   const saved = await readSavedKey();
@@ -49,11 +68,13 @@ export async function getAiKeyStatus(): Promise<AiKeyStatus> {
 }
 
 export async function saveApiKey(apiKey: string) {
+  if (ONLINE) return dbSaveUserAiKey(apiKey);
   await fs.mkdir(path.dirname(KEY_FILE), { recursive: true });
   await fs.writeFile(KEY_FILE, JSON.stringify({ apiKey }, null, 2) + "\n", "utf8");
 }
 
 export async function deleteApiKey() {
+  if (ONLINE) return dbSaveUserAiKey(null);
   await fs.rm(KEY_FILE, { force: true });
 }
 

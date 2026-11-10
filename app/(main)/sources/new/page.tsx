@@ -36,7 +36,7 @@ async function NewSourceContent() {
   return (
     <SourceIntake
       projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-      hasKey={key.source !== "none"}
+      hasKey={key.source !== "none" || ONLINE}
       online={ONLINE}
       kci={{ apiReady, saved }}
     />

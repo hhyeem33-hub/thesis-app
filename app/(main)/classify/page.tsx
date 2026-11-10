@@ -11,6 +11,7 @@ import { ProjectSwitcher } from "@/components/project-switcher";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AI_MODEL, getAiKeyStatus } from "@/lib/ai";
 import { getProjectResearch } from "@/lib/research";
+import { ONLINE } from "@/lib/online";
 import { getSources } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
 import { PARA_LABEL, SOURCE_TYPE_LABEL } from "@/lib/types";
@@ -50,7 +51,8 @@ async function ClassifyContent({ searchParams }: { searchParams: Promise<{ proje
     return <DataError error={e} />;
   }
   const { sources, key, projects, project, research } = data;
-  const hasKey = key.source !== "none";
+  // 온라인은 키가 없어도 규칙 기반으로 판단할 수 있다
+  const hasKey = key.source !== "none" || ONLINE;
   const empty = !research || !(research.purpose || research.keywords.length || research.questions.length || research.outline.length);
   const pending = sources.filter((s) => !s.classification?.relevance);
   const done = sources.filter((s) => (s.classification?.relevance ?? 0) > 0);

@@ -59,22 +59,35 @@ export function AiSettingsCard({ status, onVercel }: { status: AiKeyStatus; onVe
       <CardHeader>
         <CardTitle>AI 연결</CardTitle>
         <CardDescription>
-          Claude API 키를 넣으면 프로젝트 화면에서 &lsquo;AI로 초안 쓰기&rsquo;를 쓸 수 있어요. 키는
-          이 컴퓨터에만 저장되고 깃허브에는 올라가지 않아요.
+          {onVercel ? (
+            <>
+              Claude API 키를 넣으면 AI 판단·AI 초안을 쓸 수 있어요. 키는 <b>내 계정에만</b> 저장되고 다른 사람은 볼 수
+              없어요. 키가 없으면 AI 분류는 <b>규칙 기반</b>(연구 설정 키워드와 겹치는 정도)으로 동작해요.
+            </>
+          ) : (
+            <>
+              Claude API 키를 넣으면 프로젝트 화면에서 &lsquo;AI로 초안 쓰기&rsquo;를 쓸 수 있어요. 키는 이 컴퓨터에만
+              저장되고 깃허브에는 올라가지 않아요.
+            </>
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="inline-flex items-center gap-1.5 text-sm">
           <KeyRound className="size-4 text-muted-foreground" />
-          {status.source === "env" && <>환경 변수(ANTHROPIC_API_KEY)의 키를 쓰고 있어요 (끝자리 …{status.last4})</>}
+          {status.source === "env" &&
+            (onVercel ? (
+              <>앱 주인 계정이라 버셀에 넣은 키를 쓰고 있어요 (끝자리 …{status.last4})</>
+            ) : (
+              <>환경 변수(ANTHROPIC_API_KEY)의 키를 쓰고 있어요 (끝자리 …{status.last4})</>
+            ))}
           {status.source === "saved" && <>저장된 키가 있어요 (끝자리 …{status.last4})</>}
           {status.source === "none" && <span className="text-muted-foreground">아직 키가 없어요.</span>}
         </p>
 
-        {onVercel ? (
+        {onVercel && status.source === "env" ? (
           <p className="text-sm text-muted-foreground">
-            온라인(버셀)에서는 키를 여기 저장하지 않아요. 버셀 프로젝트의 Settings → Environment
-            Variables에 <code>ANTHROPIC_API_KEY</code>로 넣어 주세요.
+            버셀의 키는 앱 주인 계정만 써요. 다른 사람은 이 칸에서 자기 키를 넣어요.
           </p>
         ) : (
           <form onSubmit={handleSave} className="flex flex-col gap-2">

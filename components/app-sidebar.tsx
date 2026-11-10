@@ -22,6 +22,7 @@ import { Logo } from "@/components/logo";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -74,7 +75,8 @@ function activeHref(pathname: string) {
     .sort((a, b) => b.length - a.length)[0];
 }
 
-export function AppSidebar() {
+/** footer: 사이드바 아래 (로그인한 이메일·연결 상태·로그아웃) — 서버에서 그려서 넘겨준다 */
+export function AppSidebar({ footer }: { footer?: React.ReactNode }) {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border">
@@ -89,6 +91,7 @@ export function AppSidebar() {
           <ActiveSidebarNav />
         </Suspense>
       </SidebarContent>
+      {footer && <SidebarFooter className="border-t border-sidebar-border">{footer}</SidebarFooter>}
     </Sidebar>
   );
 }

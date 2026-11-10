@@ -10,6 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { getAiKeyStatus } from "@/lib/ai";
 import { getSources } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
+import { ONLINE } from "@/lib/online";
 
 export default function SourcesPage() {
   return (
@@ -47,5 +48,5 @@ async function SourcesContent() {
     projectName: s.projectId ? (names.get(s.projectId) ?? null) : null,
     excerpt: content.slice(0, 600),
   }));
-  return <SourcesList sources={items} hasKey={keyStatus.source !== "none"} />;
+  return <SourcesList sources={items} hasKey={keyStatus.source !== "none" || ONLINE} />;
 }

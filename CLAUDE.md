@@ -59,6 +59,10 @@
 - 자료 연표(/timeline): `bib.year` 기준. 옵시디언 스크랩의 published·author 머리말로 빈 서지 칸을 채움(import-obsidian.mjs, db:push 도 온라인 빈 칸만 채움).
 - 연결 설정(/connections): `lib/connections.ts` 가 옵시디언·드라이브·슈파베이스·Claude·KCI 를 실제로 확인(ok/fail/off + 이유). 작동 방법(/guide): Mermaid 흐름도 + 단계 카드.
 - 사이드바의 현재 메뉴 표시(`usePathname`)는 `<Suspense>` 안에 있어야 한다 (`/sources/[id]`처럼 주소를 미리 모르는 화면 때문에 빌드 실패).
+- 로그인(온라인 전용, 여러 사람이 각자 계정): `proxy.ts`(로그인 안 하면 `/welcome`만), `lib/auth.ts`(`currentUser`·`requireUserId`, 슈파베이스 Auth + `@supabase/ssr` 쿠키), `app/auth-actions.ts`(이메일 링크·구글·로그아웃), `app/auth/callback`(로그인 확정 → `dbPrepareAccount`: 주인은 user_id 없는 자료 넘겨받기, 처음이면 '새 프로젝트 1'). 내 컴퓨터(`ONLINE`=false, `lib/online.ts`)는 로그인 없이 그대로.
+- 계정마다 자료 따로: `lib/db.ts` 의 모든 함수가 `user_id` 로 거른다(비밀 키는 RLS를 건너뛰므로). 표·RLS는 `supabase/auth.sql`(SQL Editor에서 Run). 공통 연구 설정·사용자 AI 키는 `user_settings` 표.
+- AI 키(온라인): 버셀 `ANTHROPIC_API_KEY` 는 주인(`OWNER_EMAIL` 환경 변수)만. 다른 사람은 설정에서 자기 키(user_settings.ai_key), 없으면 `lib/rule-classify.ts` 규칙 기반 분류.
+- 화면 구조: 사이드바 있는 화면은 `app/(main)/` (주소는 그대로), `/welcome` 은 사이드바 없음. 사이드바 아래 `components/sidebar-account.tsx`(이메일·연결 상태·로그아웃).
 - 이 Next.js는 `cacheComponents`가 켜져 있다: `export const dynamic` 사용 불가. 파일을 읽는 화면은 `<Suspense>` 안의 컴포넌트에서 `await connection()` 후 읽는다.
 
 ## AI 논문 초안 (hufs-thesis-hwpx 스킬)

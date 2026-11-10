@@ -2,7 +2,9 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { aiErrorMessage, classifySource } from "@/lib/ai";
+import { aiErrorMessage, classifySource, getAiKeyStatus } from "@/lib/ai";
+import { ONLINE } from "@/lib/online";
+import { ruleClassify } from "@/lib/rule-classify";
 import { getSource, getSources, saveResearch, saveSource } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
 import { researchBasis, saveProjectResearch } from "@/lib/research";
@@ -92,13 +94,15 @@ export async function classifySourceAction(
     if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
     const projectId = basisProjectId || source.projectId;
     const basis = await researchBasis(projectId);
-    const result = await classifySource({ ...source, research: basis });
+    // 온라인에서 쓸 수 있는 AI 키가 없으면(주인이 아닌 사람이 키를 안 넣음) 비용 없는 규칙 기반으로
+    const useRules = ONLINE && (await getAiKeyStatus()).source === "none";
+    const result = useRules ? ruleClassify({ ...source, research: basis }) : await classifySource({ ...source, research: basis });
     const now = new Date().toISOString();
     const prev = source.classification ?? blankClassification();
     const next = withLog(
       { ...prev, ...result, classifiedAt: now, basisProjectId: basis.projectId },
       "AI",
-      `${result.relevance}등급 · 토픽 ‘${result.topic}’ · 신뢰도 ${result.confidence}`
+      `${useRules ? "규칙 기반 " : ""}${result.relevance}등급 · 토픽 ‘${result.topic}’ · 신뢰도 ${result.confidence}`
     );
     await saveSource({ ...source, updatedAt: now, classification: next });
     refresh(id);
