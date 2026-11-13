@@ -11,6 +11,7 @@ import type { Bib, Source, SourceType } from "./types";
 
 const MAX_CONTENT = 200_000;
 const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+const normDoi = (d?: string | null) => (d ?? "").trim().toLowerCase().replace(/^(https?:\/\/)?(dx\.)?doi\.org\//, "");
 
 export type NewSource = {
   title: string;
@@ -26,14 +27,33 @@ export type NewSource = {
 export async function addSources(items: NewSource[], projectId: string | null) {
   const existing = await getSources();
   const ids = new Set(existing.map((s) => s.id));
-  const titles = new Set(existing.map((s) => norm(s.title)));
   const urls = new Set(existing.map((s) => s.origin).filter((o) => /^https?:\/\//.test(o)));
+  const dois = new Set(existing.map((s) => normDoi(s.bib?.doi)).filter(Boolean));
+  const kciIds = new Set(existing.map((s) => s.bib?.kciId?.toUpperCase()).filter(Boolean));
+  // 제목 → 연도들 (같은 제목이라도 연도가 다르면 다른 자료, 한쪽 연도를 모르면 같은 자료로 본다)
+  const titles = new Map<string, Set<string>>();
+  const addTitle = (t: string, y = "") => titles.set(norm(t), (titles.get(norm(t)) ?? new Set()).add(y));
+  existing.forEach((s) => addTitle(s.title, s.bib?.year ?? ""));
+  const sameTitle = (t: string, y: string) => {
+    const years = titles.get(norm(t));
+    return !!years && (!y || years.has("") || years.has(y));
+  };
   const added: string[] = [];
   const skipped: string[] = [];
   for (const it of items) {
     const title = it.title.trim().slice(0, 200);
     const url = /^https?:\/\//.test(it.origin) ? it.origin.trim() : "";
-    if (!title || (it.id && ids.has(it.id)) || titles.has(norm(title)) || (url && urls.has(url))) {
+    const doi = normDoi(it.bib?.doi);
+    const kciId = it.bib?.kciId?.toUpperCase() ?? "";
+    const year = it.bib?.year ?? "";
+    if (
+      !title ||
+      (it.id && ids.has(it.id)) ||
+      (doi && dois.has(doi)) ||
+      (kciId && kciIds.has(kciId)) ||
+      sameTitle(title, year) ||
+      (url && urls.has(url))
+    ) {
       skipped.push(title || "(제목 없음)");
       continue;
     }
@@ -52,8 +72,10 @@ export async function addSources(items: NewSource[], projectId: string | null) {
     };
     await saveSource(source);
     ids.add(source.id);
-    titles.add(norm(title));
+    addTitle(title, year);
     if (url) urls.add(url);
+    if (doi) dois.add(doi);
+    if (kciId) kciIds.add(kciId);
     added.push(source.id);
   }
   return { added, skipped };
@@ -61,7 +83,7 @@ export async function addSources(items: NewSource[], projectId: string | null) {
 
 // ── 파일에서 글자 꺼내기 ─────────────────────────────────────────────────────
 
-export const FILE_KINDS = ".pdf, .docx, .txt, .md";
+export const FILE_KINDS = ".pdf, .docx, .hwp, .hwpx, .txt, .md";
 
 export async function extractText(name: string, bytes: Buffer): Promise<{ text: string; type: SourceType }> {
   const ext = path.extname(name).toLowerCase();
@@ -84,8 +106,15 @@ export async function extractText(name: string, bytes: Buffer): Promise<{ text: 
     t = t.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
     return { text: t.replace(/\r\n?/g, "\n").trim(), type: "markdown" };
   }
-  if (ext === ".doc" || ext === ".hwp")
-    throw new Error(`${ext} 파일은 읽을 수 없어요. Word는 .docx로, 한글은 PDF로 저장해서 올려 주세요.`);
+  if (ext === ".hwpx") {
+    const { hwpxText } = await import("./hangul");
+    return { text: await hwpxText(bytes), type: "pdf" };
+  }
+  if (ext === ".hwp") {
+    const { hwpText } = await import("./hangul");
+    return { text: hwpText(bytes), type: "pdf" };
+  }
+  if (ext === ".doc") throw new Error(".doc 파일은 읽을 수 없어요. Word에서 .docx로 저장해서 올려 주세요.");
   throw new Error(`이 형식은 아직 못 읽어요 (${FILE_KINDS}만 돼요).`);
 }
 
@@ -106,6 +135,12 @@ const HEADER: Record<string, keyof Omit<NewSource, "bib" | "id"> | keyof Bib> = 
   출판사: "publisher", 발행기관: "publisher", publisher: "publisher",
   doi: "doi",
   분류: "category", category: "category",
+  // RISS · KCI 에서 내보낸 엑셀 머리글
+  저자명: "authors", 발행년도: "year", 출판년도: "year", 출판연도: "year", 발행년: "year",
+  발행처: "publisher", 출판사명: "publisher", 수록면: "pages", 페이지수: "pages",
+  권호사항: "volume", 권호: "volume", 국문초록: "content", 초록국문: "content", 영문초록: "content",
+  원문url: "origin", url주소: "origin", 상세url: "origin", 논문url: "origin",
+  논문id: "kciId", artid: "kciId", kci논문id: "kciId", 논문번호: "kciId",
 };
 const TYPE_WORD: Record<string, SourceType> = {
   pdf: "pdf", 논문: "pdf", markdown: "markdown", md: "markdown", 노트: "markdown",
@@ -171,11 +206,13 @@ export async function parseList(name: string, bytes: Buffer) {
       content: v.content ?? "",
       bib: {
         kind: v.journal ? "article" : v.publisher && !v.origin ? "book" : "web",
-        authors: v.authors ?? "",
+        authors: (v.authors ?? "").replace(/\s*[;；]\s*/g, ", "),
         year: (v.year ?? "").match(/(19|20)\d{2}/)?.[0] ?? "",
         journal: v.journal ?? "",
-        volume: v.volume ?? "",
-        issue: v.issue ?? "",
+        // RISS 권호사항 "Vol.12 No.3" → 권 12, 호 3
+        volume: (v.volume ?? "").match(/vol\.?\s*(\d+)/i)?.[1] ?? (v.volume ?? "").match(/^(\d+)\s*권/)?.[1] ?? v.volume ?? "",
+        issue: v.issue || ((v.volume ?? "").match(/no\.?\s*(\d+)/i)?.[1] ?? (v.volume ?? "").match(/(\d+)\s*호/)?.[1] ?? ""),
+        kciId: (v.kciId ?? "").match(/ART\d+/i)?.[0]?.toUpperCase() ?? "",
         pages: v.pages ?? "",
         publisher: v.publisher ?? "",
         doi: v.doi ?? "",
@@ -241,4 +278,53 @@ export async function scanObsidian(): Promise<{ vault: string; items: NewSource[
     });
   }
   return { vault, items };
+}
+
+// ── 내 컴퓨터의 구글 드라이브(데스크톱 앱) 폴더에서 고르기 (읽기만) ─────────────
+
+const DRIVE_FILE_RE = /\.(pdf|docx|hwp|hwpx)$/i;
+
+/** 드라이브 루트 안의 폴더만 허용 (.. 로 밖으로 나가지 못하게) */
+async function driveDir(rel: string) {
+  if (ONLINE) throw new Error("온라인에서는 ‘구글 드라이브 연결’ 버튼으로 골라 주세요.");
+  const root = (await getSettings()).driveRootPath;
+  if (!root || !existsSync(root)) throw new Error("구글 드라이브 폴더를 찾지 못했어요. 설정의 경로와 구글 드라이브 앱을 확인해 주세요.");
+  const dir = path.resolve(root, rel || ".");
+  if (dir !== path.resolve(root) && !dir.startsWith(path.resolve(root) + path.sep)) throw new Error("드라이브 폴더 밖은 열 수 없어요.");
+  return { root, dir };
+}
+
+export async function listDriveFolder(rel: string) {
+  const { root, dir } = await driveDir(rel);
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const folders = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name).sort((a, b) => a.localeCompare(b, "ko"));
+  const files: { name: string; size: number }[] = [];
+  for (const e of entries) {
+    if (!e.isFile() || !DRIVE_FILE_RE.test(e.name)) continue;
+    const stat = await fs.stat(path.join(dir, e.name)).catch(() => null);
+    if (stat) files.push({ name: e.name, size: stat.size });
+  }
+  files.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  return { root, rel: path.relative(root, dir), folders, files };
+}
+
+export async function readDriveFiles(rel: string, names: string[]) {
+  const { dir } = await driveDir(rel);
+  const items: NewSource[] = [];
+  const failed: { name: string; error: string }[] = [];
+  for (const name of names) {
+    if (name !== path.basename(name) || !DRIVE_FILE_RE.test(name)) {
+      failed.push({ name, error: "고를 수 없는 파일이에요." });
+      continue;
+    }
+    try {
+      const bytes = await fs.readFile(path.join(dir, name));
+      if (bytes.length > 20 * 1024 * 1024) throw new Error("20MB가 넘어요.");
+      const { text, type } = await extractText(name, bytes);
+      items.push({ title: path.basename(name, path.extname(name)), type, origin: `구글 드라이브: ${path.join(rel, name)}`, content: text });
+    } catch (e) {
+      failed.push({ name, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { items, failed };
 }

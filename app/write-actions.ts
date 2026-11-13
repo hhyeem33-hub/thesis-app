@@ -3,7 +3,7 @@
 import { guestBlock } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { countChars } from "@/lib/bib";
-import { getVersion, listVersions, saveDocWithVersion } from "@/lib/documents";
+import { getVersion, listVersions, saveDocOnly, saveDocWithVersion } from "@/lib/documents";
 import { getSource, saveSource } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
 import type { Bib, DocVersion, Footnote, ThesisDoc } from "@/lib/types";
@@ -13,6 +13,26 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const MAX_BODY = 500_000;
 
+/** 화면에서 온 원고를 길이 제한에 맞춰 정리한다 (저장 · 임시저장 공용) */
+async function cleanDoc(d: Omit<ThesisDoc, "updatedAt">): Promise<ThesisDoc | string> {
+  if (!(await getProjects()).some((p) => p.id === d.projectId)) return "프로젝트를 찾을 수 없어요.";
+  if (d.body.length > MAX_BODY) return "본문이 너무 길어요 (50만 자 이하).";
+  const footnotes: Footnote[] = d.footnotes.slice(0, 2000).map((f) => ({
+    id: String(f.id).slice(0, 12),
+    text: String(f.text ?? "").slice(0, 2000),
+    sourceId: f.sourceId ? String(f.sourceId) : null,
+  }));
+  return {
+    projectId: d.projectId,
+    title: d.title.slice(0, 200),
+    author: d.author.slice(0, 50),
+    affiliation: d.affiliation.slice(0, 100),
+    body: d.body,
+    footnotes,
+    updatedAt: "",
+  };
+}
+
 /** 원고 저장 = 버전 하나 기록 */
 export async function saveDocument(input: {
   doc: Omit<ThesisDoc, "updatedAt">;
@@ -21,31 +41,27 @@ export async function saveDocument(input: {
   // 둘러보기 모드에서는 바꾸거나 비용이 드는 일을 막는다
   const blocked = await guestBlock();
   if (blocked) return blocked;
-  const d = input.doc;
-  if (!(await getProjects()).some((p) => p.id === d.projectId))
-    return { ok: false, error: "프로젝트를 찾을 수 없어요." };
-  if (d.body.length > MAX_BODY) return { ok: false, error: "본문이 너무 길어요 (50만 자 이하)." };
-  const footnotes: Footnote[] = d.footnotes.slice(0, 2000).map((f) => ({
-    id: String(f.id).slice(0, 12),
-    text: String(f.text ?? "").slice(0, 2000),
-    sourceId: f.sourceId ? String(f.sourceId) : null,
-  }));
+  const doc = await cleanDoc(input.doc);
+  if (typeof doc === "string") return { ok: false, error: doc };
   try {
-    const { doc, ...version } = await saveDocWithVersion(
-      {
-        projectId: d.projectId,
-        title: d.title.slice(0, 200),
-        author: d.author.slice(0, 50),
-        affiliation: d.affiliation.slice(0, 100),
-        body: d.body,
-        footnotes,
-        updatedAt: "",
-      },
-      input.memo || `${countChars(d.body).toLocaleString()}자 저장`
-    );
-    void doc;
+    const { doc: saved, ...version } = await saveDocWithVersion(doc, input.memo || `${countChars(doc.body).toLocaleString()}자 저장`);
+    void saved;
     revalidatePath("/write");
     return { ok: true, version };
+  } catch (e) {
+    return { ok: false, error: message(e) };
+  }
+}
+
+/** 임시저장: 원고만 저장하고 히스토리에는 남기지 않는다 (나중에 이어 쓰기) */
+export async function tempSaveDocument(input: { doc: Omit<ThesisDoc, "updatedAt"> }): Promise<Result<{ savedAt: string }>> {
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
+  const doc = await cleanDoc(input.doc);
+  if (typeof doc === "string") return { ok: false, error: doc };
+  try {
+    const saved = await saveDocOnly(doc);
+    return { ok: true, savedAt: saved.updatedAt };
   } catch (e) {
     return { ok: false, error: message(e) };
   }

@@ -2,54 +2,40 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { LogIn, LogOut, Monitor, UserRound } from "lucide-react";
 import { exitGuest, signOut } from "@/app/auth-actions";
-import { getAiKeyStatus } from "@/lib/ai";
+import { DriveLive } from "@/components/google-status";
 import { currentUser, isGuest } from "@/lib/auth";
-import { getKciKey } from "@/lib/kci";
+import { checkFour } from "@/lib/connections";
 import { ONLINE } from "@/lib/online";
-import { getSettings, isDirectory } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 // 사이드바 아래: 누구로 쓰는지 + 연결 상태(옵시디언·드라이브·KCI·AI) + 로그아웃
-// 빠르게 그리려고 실제 접속 시험은 하지 않고 "설정이 되어 있는지"만 본다. (자세한 확인은 연결 설정 화면)
+// 연결 상태는 실제로 확인한 결과다 (lib/connections.ts, 5분 동안 기억). 자세한 이유는 연결 설정 화면에서.
 
-type Dot = { name: string; state: "ok" | "off" | "warn"; note: string };
+const DOT = { ok: "bg-success", off: "bg-muted-foreground/40" } as const;
 
-async function statuses(): Promise<Dot[]> {
-  const ai = await getAiKeyStatus().catch(() => ({ source: "none" as const }));
-  const aiDot: Dot =
-    ai.source === "env"
-      ? { name: "AI", state: "ok", note: ONLINE ? "주인 계정 키" : "환경 변수 키" }
-      : ai.source === "saved"
-        ? { name: "AI", state: "ok", note: "내 키" }
-        : ONLINE
-          ? { name: "AI", state: "warn", note: "규칙 기반" }
-          : { name: "AI", state: "warn", note: "키 없음" };
-  if (ONLINE)
-    return [
-      { name: "Obsidian", state: "off", note: "내 컴퓨터 전용" },
-      { name: "Drive", state: "off", note: "내 컴퓨터 전용" },
-      { name: "KCI", state: "off", note: "새 탭 검색" },
-      aiDot,
-    ];
-  const s = await getSettings().catch(() => ({ obsidianVaultPath: "", driveRootPath: "" }));
-  const [vault, drive, kci] = await Promise.all([
-    s.obsidianVaultPath ? isDirectory(s.obsidianVaultPath) : false,
-    s.driveRootPath ? isDirectory(s.driveRootPath) : false,
-    getKciKey().catch(() => ""),
-  ]);
-  return [
-    { name: "Obsidian", state: vault ? "ok" : "warn", note: vault ? "연결됨" : "경로 확인" },
-    { name: "Drive", state: drive ? "ok" : "warn", note: drive ? "연결됨" : "경로 확인" },
-    { name: "KCI", state: kci ? "ok" : "warn", note: kci ? "API 키" : "키 없음" },
-    aiDot,
-  ];
+function DotRow({ name, state, note, sub }: { name: string; state: "ok" | "off"; note: string; sub?: string }) {
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className={cn("size-2 shrink-0 rounded-full", DOT[state])} aria-hidden="true" />
+        <span className="truncate">
+          {name} <span className={state === "ok" ? "text-success" : "text-muted-foreground"}>· {note}</span>
+        </span>
+      </span>
+      {sub && <span className="truncate pl-3.5 text-[11px] text-muted-foreground">{sub}</span>}
+    </span>
+  );
 }
 
-const DOT = { ok: "bg-success", warn: "bg-gold", off: "bg-muted-foreground/40" } as const;
+/** "연결됨 · 이유" → 앞부분은 상태, 뒷부분은 작은 글씨 */
+function split(summary: string) {
+  const i = summary.lastIndexOf(" · ");
+  return i < 0 ? { note: summary, sub: undefined } : { note: summary.slice(0, i), sub: summary.slice(i + 3) };
+}
 
 export async function SidebarAccount() {
   await connection();
-  const [user, dots, guest] = await Promise.all([currentUser(), statuses(), isGuest()]);
+  const [user, dots, guest] = await Promise.all([currentUser(), checkFour().catch(() => []), isGuest()]);
   return (
     <div className="flex flex-col gap-2 px-1 py-1 text-xs group-data-[collapsible=icon]:hidden">
       <div className="flex items-center gap-2">
@@ -69,15 +55,20 @@ export async function SidebarAccount() {
           </p>
         </div>
       </div>
-      <Link href="/connections" className="grid grid-cols-2 gap-x-2 gap-y-1 rounded-md p-1 hover:bg-sidebar-accent" title="연결 설정에서 자세히 보기">
-        {dots.map((d) => (
-          <span key={d.name} className="flex min-w-0 items-center gap-1.5">
-            <span className={cn("size-2 shrink-0 rounded-full", DOT[d.state])} aria-hidden="true" />
-            <span className="truncate">
-              {d.name} <span className="text-muted-foreground">· {d.note}</span>
+      <Link href="/connections" className="flex flex-col gap-1 rounded-md p-1 hover:bg-sidebar-accent" title="연결 설정에서 자세히 보기">
+        {dots.map((d) => {
+          const { note, sub } = split(d.summary);
+          const row = <DotRow name={d.short} state={d.state} note={note} sub={sub} />;
+          return (
+            <span key={d.id} title={`${d.name}: ${d.summary}`}>
+              {d.id === "drive" && ONLINE ? (
+                <DriveLive connected={<DotRow name={d.short} state="ok" note="연결됨" />}>{row}</DriveLive>
+              ) : (
+                row
+              )}
             </span>
-          </span>
-        ))}
+          );
+        })}
       </Link>
       {guest && (
         <form action={exitGuest}>

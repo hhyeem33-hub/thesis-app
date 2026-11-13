@@ -8,6 +8,7 @@ import {
   dbListDrafts,
   dbListVersions,
   dbSaveDoc,
+  dbSaveDocOnly,
   ONLINE,
 } from "./db";
 import type { AiDraftRecord, DocVersion, ThesisDoc } from "./types";
@@ -51,6 +52,19 @@ export async function getDoc(projectId: string): Promise<ThesisDoc | null> {
   if (ONLINE) return dbGetDoc(projectId);
   const docs = await readJson<Record<string, ThesisDoc>>(DOCS_FILE, {});
   return docs[projectId] ?? null;
+}
+
+/** 임시저장: 원고만 저장 (히스토리에는 기록하지 않음). 다시 열면 이어서 쓸 수 있다 */
+export async function saveDocOnly(doc: ThesisDoc): Promise<ThesisDoc> {
+  const saved: ThesisDoc = { ...doc, updatedAt: new Date().toISOString() };
+  if (ONLINE) {
+    await dbSaveDocOnly(saved);
+    return saved;
+  }
+  const docs = await readJson<Record<string, ThesisDoc>>(DOCS_FILE, {});
+  docs[doc.projectId] = saved;
+  await writeJson(DOCS_FILE, docs);
+  return saved;
 }
 
 /** 원고를 저장하고 버전 하나를 기록한다 */

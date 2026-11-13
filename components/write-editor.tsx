@@ -21,8 +21,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchVersion, restoreVersion, saveDocument } from "@/app/write-actions";
-import { HwpxExport, type TemplateInfo } from "@/components/hwpx-export";
+import { fetchVersion, restoreVersion, saveDocument, tempSaveDocument } from "@/app/write-actions";
+import { DocExport } from "@/components/doc-export";
+import type { TemplateInfo } from "@/components/hwpx-export";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -252,6 +253,20 @@ export function WriteEditor({
     });
   }
 
+  /** 임시저장: 히스토리에 남기지 않고 원고만 보관 */
+  function tempSave() {
+    if (pending) return;
+    startTransition(async () => {
+      const r = await tempSaveDocument({ doc });
+      if (!r.ok) {
+        toast.error("임시저장하지 못했어요", { description: r.error });
+        return;
+      }
+      setSavedSnapshot(JSON.stringify(doc));
+      toast.success("임시저장했어요", { description: "다음에 열면 여기서 이어 쓸 수 있어요. 히스토리에는 ‘저장’할 때 기록돼요." });
+    });
+  }
+
   // Ctrl+S 로 저장
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -306,7 +321,7 @@ export function WriteEditor({
     { id: "references", label: "참고문헌", icon: <BookMarked />, badge: references.length },
     { id: "history", label: "히스토리", icon: <History />, badge: versions.length },
     { id: "drafts", label: "AI 초안", icon: <Sparkles /> },
-    { id: "export", label: "HWPX", icon: <FileDown /> },
+    { id: "export", label: "출력", icon: <FileDown /> },
   ];
 
   return (
@@ -619,11 +634,16 @@ export function WriteEditor({
           )}
 
           {tab === "export" && (
-            <HwpxExport
+            <DocExport
+              doc={doc}
               projectId={doc.projectId}
+              references={references.map((r) => r.text)}
               templates={templates}
               online={online}
               dirty={dirty}
+              saving={pending}
+              onTempSave={tempSave}
+              onSave={save}
               onTemplatesChange={() => router.refresh()}
             />
           )}

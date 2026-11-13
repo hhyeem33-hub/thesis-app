@@ -57,7 +57,11 @@
 - 슈파베이스 비밀 키로는 표·칸을 만들 수 없다(데이터만). 새 정보는 가능하면 기존 jsonb 칸에 넣는다.
 - 자료 수집(/sources/new, `components/source-intake.tsx`): 탭 = 직접 입력·KCI 검색·옵시디언 가져오기(내 컴퓨터만, Clippings 새 노트만)·파일 올리기(`/api/sources/upload`: pdf=unpdf, docx=mammoth, txt·md)·목록 가져오기(`/api/sources/list`: xlsx=read-excel-file, csv 직접 파싱, 머리글 한/영). 저장은 `lib/source-intake.ts`의 `addSources`(id·제목·주소 중복 건너뜀). "들어오면 바로 AI 판단"은 `components/auto-classify.tsx`.
 - 자료 연표(/timeline): `bib.year` 기준. 옵시디언 스크랩의 published·author 머리말로 빈 서지 칸을 채움(import-obsidian.mjs, db:push 도 온라인 빈 칸만 채움).
-- 연결 설정(/connections): `lib/connections.ts` 가 옵시디언·드라이브·슈파베이스·Claude·KCI 를 실제로 확인(ok/fail/off + 이유). 작동 방법(/guide): Mermaid 흐름도 + 단계 카드.
+- 연결 상태(/connections + 사이드바 아래): `lib/connections.ts` 의 `checkFour`(옵시디언·드라이브·KCI·AI 실제 확인, 사이드바는 5분 기억) + 슈파베이스. 초록=연결됨, 회색=연결 안 됨+이유. 온라인의 옵시디언·KCI는 "내 컴퓨터에서 연결됨 · 마지막 가져오기"(자료의 고정 id·bib.kciId 날짜), 온라인 드라이브는 브라우저의 구글 로그인 토큰(`components/google-status.tsx`, sessionStorage 1시간)으로 초록. 작동 방법(/guide): Mermaid 흐름도 + 단계 카드.
+- 구글 드라이브(온라인): `components/drive-picker.tsx` — 구글 로그인(GIS 토큰, 범위 drive.file) + Picker → 브라우저가 파일을 받아 `/api/sources/upload`(origins 칸)로 보냄. 환경 변수 NEXT_PUBLIC_GOOGLE_CLIENT_ID·API_KEY·APP_ID(`lib/google.ts`). 내 컴퓨터는 데스크톱 앱 폴더를 읽기만(`listDriveFolder`·`readDriveFiles`). 한글 글자 추출은 `lib/hangul.ts`(hwpx=zip XML, hwp=cfb+PARA_TEXT, cfb 는 type "array"로 읽어야 함).
+- 링크 가져오기: `lib/link-import.ts`(유튜브 페이지의 제목·채널·날짜·자막, 막히면 설명 + [보완 필요]; 유튜브 내부 API 우회는 쓰지 않음). 목록 중복: DOI·KCI ID·제목+연도.
+- 출력(글쓰기 → 출력 탭): `components/doc-export.tsx` + `lib/export-doc.ts`(PDF=인쇄 창, DOCX=docx 라이브러리로 브라우저에서, HTML·MD), HWPX 만 내 컴퓨터. 확인할 곳 = [보완 필요] + 출처 없는 각주. 임시저장(`tempSaveDocument`→`saveDocOnly`, 버전 없음) / 저장(버전 기록).
+- 디자인: 다른 학생 앱의 배치를 따라 하지 않는다 (우리만의 베이지 디자인과 배치).
 - 사이드바의 현재 메뉴 표시(`usePathname`)는 `<Suspense>` 안에 있어야 한다 (`/sources/[id]`처럼 주소를 미리 모르는 화면 때문에 빌드 실패).
 - 로그인(온라인 전용, 여러 사람이 각자 계정): `proxy.ts`(로그인 안 하면 `/welcome`만), `lib/auth.ts`(`currentUser`·`requireUserId`, 슈파베이스 Auth + `@supabase/ssr` 쿠키), `app/auth-actions.ts`(이메일 링크·구글·로그아웃), `app/auth/callback`(로그인 확정 → `dbPrepareAccount`: 주인은 user_id 없는 자료 넘겨받기, 처음이면 '새 프로젝트 1'). 내 컴퓨터(`ONLINE`=false, `lib/online.ts`)는 로그인 없이 그대로.
 - 계정마다 자료 따로: `lib/db.ts` 의 모든 함수가 `user_id` 로 거른다(비밀 키는 RLS를 건너뛰므로). 표·RLS는 `supabase/auth.sql`(SQL Editor에서 Run). 공통 연구 설정·사용자 AI 키는 `user_settings` 표.

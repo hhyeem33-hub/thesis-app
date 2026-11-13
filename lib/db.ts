@@ -281,6 +281,17 @@ export async function dbSaveDoc(doc: ThesisDoc, version: DocVersion) {
   check(vErr);
 }
 
+/** 임시저장: 원고만 저장하고 히스토리(버전)는 남기지 않는다 */
+export async function dbSaveDocOnly(doc: ThesisDoc) {
+  const uid = await requireWriter();
+  await assertMyProject(uid, doc.projectId);
+  const research = (await readDocRow(uid, doc.projectId))?.research;
+  const { error } = await db()
+    .from("documents")
+    .upsert({ project_id: doc.projectId, user_id: uid, doc: research ? { ...doc, research } : doc, updated_at: doc.updatedAt });
+  check(error);
+}
+
 /** 버전 목록 (원고 내용은 빼고 가볍게) */
 export async function dbListVersions(projectId: string): Promise<Omit<DocVersion, "doc">[]> {
   const uid = await requireUserId();
@@ -390,3 +401,27 @@ export async function dbPrepareAccount(user: { id: string; isOwner: boolean }) {
   }
   return { claimed, created };
 }
+
+/** 연결 상태용: 옵시디언에서 가져온 자료(고정 id, uuid 5번)와 KCI 자료의 마지막 가져온 날짜 */
+export async function dbLastImports(): Promise<{ obsidian: string | null; kci: string | null }> {
+  const uid = await requireUserId();
+  let obsidian: string | null = null;
+  let kci: string | null = null;
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db()
+      .from("sources")
+      .select("id, created_at, kci:bib->>kciId")
+      .eq("user_id", uid)
+      .range(from, from + 999);
+    check(error);
+    for (const r of (data ?? []) as { id: string; created_at: string; kci: string | null }[]) {
+      if (isObsidianId(r.id) && (!obsidian || r.created_at > obsidian)) obsidian = r.created_at;
+      if (r.kci && (!kci || r.created_at > kci)) kci = r.created_at;
+    }
+    if ((data?.length ?? 0) < 1000) break;
+  }
+  return { obsidian, kci };
+}
+
+/** 옵시디언 노트는 경로로 만든 고정 id(uuid 5번 형식)를 쓴다 (lib/source-intake.ts stableId) */
+export const isObsidianId = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-5/i.test(id);
