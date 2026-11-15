@@ -65,6 +65,7 @@
 - 사이드바의 현재 메뉴 표시(`usePathname`)는 `<Suspense>` 안에 있어야 한다 (`/sources/[id]`처럼 주소를 미리 모르는 화면 때문에 빌드 실패).
 - 로그인(온라인 전용, 여러 사람이 각자 계정): `proxy.ts`(로그인 안 하면 `/welcome`만), `lib/auth.ts`(`currentUser`·`requireUserId`, 슈파베이스 Auth + `@supabase/ssr` 쿠키), `app/auth-actions.ts`(이메일 링크·구글·로그아웃), `app/auth/callback`(로그인 확정 → `dbPrepareAccount`: 주인은 user_id 없는 자료 넘겨받기, 처음이면 '새 프로젝트 1'). 내 컴퓨터(`ONLINE`=false, `lib/online.ts`)는 로그인 없이 그대로.
 - 비밀번호 재설정(온라인): 로그인 화면 ‘비밀번호를 잊으셨나요?’ → `sendPasswordReset`(redirectTo = /auth/callback?next=/reset-password) → 콜백이 로그인 확정 후 `/reset-password`(새 비밀번호 두 번, `setMyPassword`). 슈파베이스 URL Configuration의 Redirect URLs 에 `https://thesis-app-self-alpha.vercel.app/**` 가 있어야 함. 링크는 요청한 같은 브라우저에서 열어야 함(PKCE).
+- 관리자 비밀번호 바꾸기(내 컴퓨터 전용, /admin-password): 메일 없이 `.env.local` 의 SUPABASE_SECRET_KEY 로 OWNER_EMAIL 계정 비밀번호를 바꿈(`app/admin-actions.ts`). 문지기 `lib/local-admin.ts` 의 `isLocalAdmin`(ONLINE·VERCEL_ENV 면 false, Host 가 localhost·127.0.0.1 일 때만) — 화면은 notFound, 서버 함수도 거절.
 - 계정마다 자료 따로: `lib/db.ts` 의 모든 함수가 `user_id` 로 거른다(비밀 키는 RLS를 건너뛰므로). 표·RLS는 `supabase/auth.sql`(SQL Editor에서 Run). 공통 연구 설정·사용자 AI 키는 `user_settings` 표.
 - AI 키(온라인): 버셀 `ANTHROPIC_API_KEY` 는 주인(`OWNER_EMAIL` 환경 변수)만. 다른 사람은 설정에서 자기 키(user_settings.ai_key), 없으면 `lib/rule-classify.ts` 규칙 기반 분류.
 - 화면 구조: 사이드바 있는 화면은 `app/(main)/` (주소는 그대로), `/welcome` 은 사이드바 없음. 사이드바 아래 `components/sidebar-account.tsx`(이메일·연결 상태·로그아웃).
