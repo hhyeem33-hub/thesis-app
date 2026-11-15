@@ -4,10 +4,13 @@
 
 export type GoogleConfig = { ready: boolean; clientId: string; apiKey: string; appId: string };
 
+/** 붙여 넣을 때 딸려 온 앞뒤 공백·줄바꿈·따옴표를 뗀다 (공백 하나만 있어도 구글이 다른 ID로 보고 로그인 창을 바로 닫는다) */
+const clean = (v?: string) => (v ?? "").trim().replace(/^["']|["']$/g, "").trim();
+
 export function googleConfig(): GoogleConfig {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY ?? "";
-  const appId = process.env.NEXT_PUBLIC_GOOGLE_APP_ID ?? "";
+  const clientId = clean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
+  const apiKey = clean(process.env.NEXT_PUBLIC_GOOGLE_API_KEY);
+  const appId = clean(process.env.NEXT_PUBLIC_GOOGLE_APP_ID);
   return { ready: !!(clientId && apiKey && appId), clientId, apiKey, appId };
 }
 
