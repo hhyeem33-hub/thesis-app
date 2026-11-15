@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, LogIn, MailCheck } from "lucide-react";
 // Eye 는 비밀번호 보기와 둘러보기 버튼에 같이 쓴다
 import { toast } from "sonner";
-import { enterGuest, googleLoginUrl, loginOptions, passwordLogin, sendLoginLink } from "@/app/auth-actions";
+import { enterGuest, googleLoginUrl, loginOptions, passwordLogin, sendLoginLink, sendPasswordReset } from "@/app/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,8 @@ export function LoginPanel() {
   const [show, setShow] = useState(false);
   const [google, setGoogle] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"login" | "google" | "link" | null>(null);
+  const [resetSentTo, setResetSentTo] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"login" | "google" | "link" | "reset" | null>(null);
   const [, startTransition] = useTransition();
   const error = params.get("error");
 
@@ -86,6 +87,22 @@ export function LoginPanel() {
     });
   }
 
+  /** 비밀번호를 잊었을 때: 위 칸의 이메일로 재설정 링크 보내기 */
+  function sendReset() {
+    if (!email.trim()) {
+      toast.info("위 칸에 이메일을 먼저 적어 주세요", { description: "그 이메일로 비밀번호 재설정 링크를 보내 드려요." });
+      document.getElementById("login-email")?.focus();
+      return;
+    }
+    setBusy("reset");
+    startTransition(async () => {
+      const r = await sendPasswordReset(email);
+      setBusy(null);
+      if (!r.ok) toast.error("재설정 메일을 보내지 못했어요", { description: r.error });
+      else setResetSentTo(email.trim());
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-gold/40 bg-card/90 p-6 shadow-sm backdrop-blur">
       <div>
@@ -112,9 +129,19 @@ export function LoginPanel() {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor="login-password" className="text-xs">
-            비밀번호 <span className="text-muted-foreground">(6자 이상)</span>
-          </Label>
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="login-password" className="text-xs">
+              비밀번호 <span className="text-muted-foreground">(6자 이상)</span>
+            </Label>
+            <button
+              type="button"
+              onClick={sendReset}
+              disabled={!!busy}
+              className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {busy === "reset" ? "보내는 중…" : "비밀번호를 잊으셨나요?"}
+            </button>
+          </div>
           <div className="relative">
             <Input
               id="login-password"
@@ -136,6 +163,15 @@ export function LoginPanel() {
             </button>
           </div>
         </div>
+        {resetSentTo && (
+          <p className="inline-flex items-start gap-1.5 rounded-md bg-success/10 px-3 py-2 text-xs text-success">
+            <MailCheck className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              {resetSentTo} 로 비밀번호 재설정 링크를 보냈어요 (가입된 이메일일 때). <b>이 브라우저</b>에서 메일의 링크를 누르면
+              새 비밀번호를 정하는 화면이 열려요. 메일이 안 보이면 스팸함도 확인해 주세요.
+            </span>
+          </p>
+        )}
         <Button type="submit" size="lg" className="h-11" disabled={!!busy || !email.trim() || password.length < 6}>
           {busy === "login" ? <Loader2 className="animate-spin" /> : <LogIn />}
           {busy === "login" ? "들어가는 중…" : "들어가기"}

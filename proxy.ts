@@ -6,7 +6,7 @@ import { ONLINE } from "@/lib/online";
 // 내 컴퓨터(localhost)는 아무것도 하지 않는다 → 지금처럼 로그인 없이 쓴다.
 // ⚠️ 실제 보호는 서버 쪽(lib/db.ts 의 requireUserId)에서도 한 번 더 한다.
 
-const OPEN = ["/welcome", "/auth/callback"];
+const OPEN = ["/welcome", "/auth/callback", "/reset-password"];
 
 export async function proxy(request: NextRequest) {
   if (!ONLINE) return NextResponse.next();

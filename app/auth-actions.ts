@@ -116,6 +116,22 @@ export async function loginOptions(): Promise<{ google: boolean }> {
   }
 }
 
+/**
+ * 비밀번호를 잊었을 때: 재설정 링크를 메일로 보낸다.
+ * 링크 → /auth/callback (로그인 확정) → /reset-password (새 비밀번호 두 번 입력)
+ * 가입 안 된 이메일인지는 알려 주지 않는다 (남의 가입 여부를 알아낼 수 없게)
+ */
+export async function sendPasswordReset(email: string): Promise<Result> {
+  if (!ONLINE) return { ok: false, error: "내 컴퓨터에서는 로그인 없이 써요." };
+  const e = email.trim().toLowerCase();
+  if (!EMAIL_RE.test(e)) return { ok: false, error: "이메일 주소를 확인해 주세요." };
+  const supabase = await authClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(e, {
+    redirectTo: `${await callbackUrl()}?next=${encodeURIComponent("/reset-password")}`,
+  });
+  return error ? { ok: false, error: friendly(error.message) } : { ok: true };
+}
+
 /** 로그인한 사람이 비밀번호를 정하거나 바꾼다 (이메일 링크로 만든 계정도 여기서 비밀번호를 정함) */
 export async function setMyPassword(password: string): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!ONLINE) return { ok: false, error: "내 컴퓨터에서는 로그인 없이 써요." };

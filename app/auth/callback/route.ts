@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const fail = (msg: string) => NextResponse.redirect(new URL(`/welcome?error=${encodeURIComponent(msg)}`, url.origin));
 
   const reason = url.searchParams.get("error_description");
-  if (reason) return fail(/expired|invalid/i.test(reason) ? "로그인 링크가 만료됐어요. 다시 보내 주세요." : reason);
+  if (reason) return fail(/expired|invalid/i.test(reason) ? "메일의 링크가 만료됐어요. 다시 보내 주세요." : reason);
   if (!code) return fail("로그인 정보가 없어요. 다시 시도해 주세요.");
 
   const supabase = await authClient();
@@ -27,7 +27,10 @@ export async function GET(request: NextRequest) {
     // 로그인은 됐지만 계정 준비 실패 (예: auth.sql 을 아직 안 돌림) → 대시보드에서 안내가 보인다
     console.error("계정 준비 실패:", e instanceof Error ? e.message : e);
   }
-  const res = NextResponse.redirect(new URL("/dashboard", url.origin));
+  // 비밀번호 재설정 메일에서 왔으면 새 비밀번호 화면으로 (우리 앱 안의 주소만 허용)
+  const next = url.searchParams.get("next");
+  const to = next === "/reset-password" ? next : "/dashboard";
+  const res = NextResponse.redirect(new URL(to, url.origin));
   res.cookies.delete(GUEST_COOKIE); // 로그인했으면 둘러보기는 끝
   return res;
 }
