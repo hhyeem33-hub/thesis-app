@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -21,7 +21,7 @@ import {
 import { toast } from "sonner";
 import { browseDriveFolder, importDriveFiles, importLink, importObsidian, previewObsidian } from "@/app/intake-actions";
 import { AutoClassifyProgress, useAutoClassify } from "@/components/auto-classify";
-import { DrivePicker } from "@/components/drive-picker";
+import { DrivePicker, readDriveReturn } from "@/components/drive-picker";
 import { KciSearch } from "@/components/kci-search";
 import { SourceForm } from "@/components/source-form";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,19 @@ export function SourceIntake({
   const asked = useSearchParams().get("tab") as Tab | null;
   const [tab, setTab] = useState<Tab>(asked && TABS.includes(asked) ? asked : "kci");
   const [projectId, setProjectId] = useState(projects[0]?.id ?? "");
+  // 구글 로그인에서 돌아왔으면(#access_token=…) Google Drive 탭을 열고 떠나기 전 고른 프로젝트로 되돌린다
+  // (주소의 # 부분은 브라우저에만 있어서 화면이 뜬 다음에 읽는다)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const back = readDriveReturn();
+      if (!back) return;
+      setTab("drive");
+      if (back.projectId === "" || projects.some((p) => p.id === back.projectId)) setProjectId(back.projectId ?? "");
+    }, 0);
+    return () => clearTimeout(timer);
+    // 처음 한 번만
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { run, progress } = useAutoClassify();
   // 들어온 자료는 모두 바로 판단한다 (키가 없는 온라인 계정은 규칙 기반)
   const afterAdd = (ids: string[]) => {

@@ -7,34 +7,23 @@ import { readDriveToken, saveDriveToken, useDriveConnected } from "@/components/
 import { Button } from "@/components/ui/button";
 import { DRIVE_EXT, DRIVE_MIME, type GoogleConfig } from "@/lib/google";
 
-// 구글 드라이브 연결 (브라우저에서): 구글 로그인 창 → 구글 파일 선택 창(Picker) → 고른 파일만 내려받아 글자 추출
+// 구글 드라이브 연결 (브라우저에서) — "화면 이동(리다이렉트)" 방식
+// 버튼 → 구글 로그인 화면으로 이동 → 허용 → /sources/new 로 돌아옴(#access_token=…) → 바로 파일 선택 창(Picker)
+// 팝업을 쓰지 않아서 크롬의 팝업 차단·창 격리(COOP) 때문에 로그인 창이 바로 닫히는 문제가 없다.
 // 권한은 drive.file — "내가 고른 파일만" 읽을 수 있어서 드라이브 전체를 보지 않는다.
-//
-// ⚠️ 크롬은 "버튼을 누른 바로 그 순간"에 연 창만 팝업으로 허락한다.
-//    그래서 구글 스크립트는 화면이 열릴 때 미리 불러 두고, 버튼을 누르면 기다림 없이 바로 로그인 창을 연다.
 
 const SCOPE = "https://www.googleapis.com/auth/drive.file";
 const GOOGLE_DOC = "application/vnd.google-apps.document";
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 /** 버셀 서버가 한 번에 받을 수 있는 크기 (요청 4.5MB 제한) */
 const MAX_UPLOAD = 4 * 1024 * 1024;
+/** 구글에서 돌아올 주소 (구글 클라우드의 '승인된 리디렉션 URI'에 똑같이 넣어야 함) */
+export const DRIVE_RETURN_PATH = "/sources/new";
+/** 구글로 떠나기 전에 기억해 둘 것 (돌아왔을 때 맞는 요청인지 확인 + 고른 프로젝트) */
+const PENDING = "gdrive_oauth_pending";
 
-type TokenResponse = { access_token?: string; expires_in?: number; error?: string; error_description?: string };
-type TokenError = { type?: string; message?: string };
-type TokenClient = { requestAccessToken(o?: { prompt?: string }): void };
 type PickedDoc = { id: string; name: string; mimeType: string; url?: string; sizeBytes?: number };
-type GoogleGlobal = {
-  accounts: {
-    oauth2: {
-      initTokenClient(o: {
-        client_id: string;
-        scope: string;
-        callback: (r: TokenResponse) => void;
-        error_callback?: (e: TokenError) => void;
-      }): TokenClient;
-      revoke(token: string, done: () => void): void;
-    };
-  };
+type PickerGlobal = {
   picker: {
     DocsView: new (viewId?: unknown) => {
       setMimeTypes(m: string): unknown;
@@ -60,7 +49,10 @@ type PickerBuilder = {
   setCallback(cb: (d: { action: string; docs?: PickedDoc[] }) => void): PickerBuilder;
   build(): { setVisible(v: boolean): void };
 };
-type Win = Window & { google?: GoogleGlobal; gapi?: { load(name: string, o: { callback: () => void; onerror: () => void }): void } };
+type Win = Window & {
+  google?: PickerGlobal;
+  gapi?: { load(name: string, o: { callback: () => void; onerror: () => void }): void };
+};
 
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
@@ -76,39 +68,33 @@ function loadScript(src: string) {
   });
 }
 
-/** 구글 로그인(gsi) + 파일 선택 창(gapi picker) 스크립트를 미리 불러온다 */
-async function loadGoogle() {
-  await Promise.all([loadScript("https://accounts.google.com/gsi/client"), loadScript("https://apis.google.com/js/api.js")]);
+/** 파일 선택 창(Picker) 스크립트만 미리 불러온다 (로그인은 화면 이동이라 스크립트가 필요 없음) */
+async function loadPicker() {
+  await loadScript("https://apis.google.com/js/api.js");
   const w = window as Win;
   await new Promise<void>((resolve, reject) => w.gapi!.load("picker", { callback: resolve, onerror: () => reject(new Error("picker")) }));
-  if (!w.google?.accounts?.oauth2 || !w.google.picker) throw new Error("script");
+  if (!w.google?.picker) throw new Error("script");
   return w.google;
 }
 
 /** 구글이 돌려준 영어 오류 → 한국어 이유와 고치는 법 */
-function koreanTokenError(code: string, detail?: string) {
+function koreanOAuthError(code: string) {
   switch (code) {
-    case "popup_failed_to_open":
-      return "브라우저가 구글 로그인 창(팝업)을 막았어요. 주소창 오른쪽의 ‘팝업 차단됨’ 아이콘을 눌러 이 사이트의 팝업을 허용한 뒤 다시 눌러 주세요.";
-    case "popup_closed":
-      return "구글 로그인 창이 닫혔어요. 계정을 고르기 전에 창이 바로 닫혔다면, 구글 클라우드 OAuth 클라이언트의 ‘승인된 자바스크립트 원본’에 지금 주소가 있는지 확인해 주세요.";
     case "access_denied":
-      return "구글 드라이브 접근을 허용하지 않았어요. 다시 눌러 ‘허용’을 골라 주세요.";
+      return "구글 드라이브 접근을 허용하지 않았어요. 다시 눌러 ‘계속’(허용)을 골라 주세요. 테스트 중인 앱이면 구글 클라우드의 테스트 사용자에 이 계정이 있어야 해요.";
+    case "redirect_uri_mismatch":
+      return `구글 클라우드 OAuth 클라이언트의 ‘승인된 리디렉션 URI’에 ${location.origin}${DRIVE_RETURN_PATH} 를 넣어 주세요.`;
     case "invalid_client":
     case "unauthorized_client":
       return "구글 클라이언트 ID가 맞지 않아요. 버셀 환경 변수 NEXT_PUBLIC_GOOGLE_CLIENT_ID 를 확인해 주세요.";
-    case "origin_mismatch":
-    case "redirect_uri_mismatch":
-      return `이 주소(${location.origin})가 구글 클라우드의 ‘승인된 자바스크립트 원본’에 없어요.`;
-    case "admin_policy_enforced":
-    case "org_internal":
-      return "이 구글 계정은 쓸 수 없어요. 앱이 ‘테스트 중’이면 구글 클라우드의 테스트 사용자에 이 계정을 넣어 주세요.";
+    case "state_mismatch":
+      return "구글에서 돌아온 정보가 이 브라우저의 요청과 달라요. 버튼을 다시 눌러 주세요.";
     default:
-      return `구글 로그인에 실패했어요 (${code}${detail ? `: ${detail}` : ""}).`;
+      return `구글 로그인에 실패했어요 (${code}).`;
   }
 }
 
-function pick(google: GoogleGlobal, cfg: GoogleConfig, token: string): Promise<PickedDoc[]> {
+function pick(google: PickerGlobal, cfg: GoogleConfig, token: string): Promise<PickedDoc[]> {
   return new Promise((resolve) => {
     const view = new google.picker.DocsView(google.picker.ViewId.DOCS);
     view.setMimeTypes(DRIVE_MIME.join(","));
@@ -149,6 +135,25 @@ async function download(doc: PickedDoc, token: string): Promise<File> {
   return new File([await res.blob()], name);
 }
 
+/**
+ * 구글에서 돌아왔는지: 주소 뒤(#)의 access_token·state 를 읽고 주소에서 지운다.
+ * 자료 수집 화면이 Google Drive 탭을 바로 열 수 있게 밖에서도 쓴다.
+ */
+export function readDriveReturn(): { token?: string; expiresIn: number; error?: string; projectId?: string } | null {
+  if (typeof window === "undefined" || !/[#&](access_token|error)=/.test(location.hash)) return null;
+  const p = new URLSearchParams(location.hash.slice(1));
+  let pending: { state?: string; projectId?: string } = {};
+  try {
+    pending = JSON.parse(sessionStorage.getItem(PENDING) ?? "{}");
+  } catch {}
+  return {
+    token: p.get("state") && p.get("state") === pending.state ? (p.get("access_token") ?? undefined) : undefined,
+    expiresIn: Number(p.get("expires_in")) || 3600,
+    error: p.get("error") ?? (p.get("state") !== pending.state ? "state_mismatch" : undefined),
+    projectId: pending.projectId,
+  };
+}
+
 export function DrivePicker({
   config,
   projectId,
@@ -163,49 +168,69 @@ export function DrivePicker({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ added: number; skipped: number; failed: { name: string; error: string }[] } | null>(null);
-  const googleRef = useRef<GoogleGlobal | null>(null);
-  const clientRef = useRef<TokenClient | null>(null);
-  // 최신 projectId·onAdded 를 로그인 창 콜백에서 쓰기 위해
+  const googleRef = useRef<PickerGlobal | null>(null);
   const latest = useRef({ projectId, onAdded });
   useEffect(() => {
     latest.current = { projectId, onAdded };
   });
 
-  // 화면이 열리면 구글 스크립트를 미리 불러오고 로그인 도구를 만들어 둔다
+  // 화면이 열리면: 구글에서 돌아왔는지 확인 + 파일 선택 창 스크립트 미리 불러오기 → 돌아온 거면 바로 피커 열기
   useEffect(() => {
     if (!config.ready) return;
+    const back = readDriveReturn();
+    if (back) {
+      // 주소창의 #access_token=… 은 바로 지운다 (기록·공유에 남지 않게)
+      history.replaceState(null, "", `${location.pathname}?tab=drive`);
+      sessionStorage.removeItem(PENDING);
+      if (back.token) saveDriveToken({ token: back.token, exp: Date.now() + back.expiresIn * 1000 });
+    }
     let alive = true;
-    loadGoogle()
-      .then((google) => {
+    loadPicker()
+      .then((g) => {
         if (!alive) return;
-        googleRef.current = google;
-        clientRef.current = google.accounts.oauth2.initTokenClient({
-          client_id: config.clientId,
-          scope: SCOPE,
-          callback: (r) => {
-            if (!r.access_token) {
-              fail(koreanTokenError(r.error ?? "unknown", r.error_description));
-              return;
-            }
-            saveDriveToken({ token: r.access_token, exp: Date.now() + (r.expires_in ?? 3600) * 1000 });
-            void pickAndSave(r.access_token);
-          },
-          error_callback: (e) => fail(koreanTokenError(e.type ?? "unknown", e.message)),
-        });
+        googleRef.current = g;
         setReady("ok");
+        if (back?.token) void pickAndSave(back.token);
+        else if (back) showError(koreanOAuthError(back.error ?? "unknown"));
       })
-      .catch(() => alive && setReady("fail"));
+      .catch(() => {
+        if (!alive) return;
+        setReady("fail");
+        if (back)
+          showError(
+            back.token
+              ? "파일 선택 창을 불러오지 못했어요. 광고 차단 확장 프로그램을 끄고 새로 고침해 주세요."
+              : koreanOAuthError(back.error ?? "unknown")
+          );
+      });
     return () => {
       alive = false;
     };
-    // pickAndSave·fail 은 ref 만 읽어서 다시 만들 필요가 없다
+    // pickAndSave·showError 는 ref·상태만 써서 다시 만들 필요가 없다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.ready, config.clientId]);
+  }, [config.ready]);
 
-  function fail(message: string) {
+  function showError(message: string) {
     setBusy(null);
     setError(message);
     toast.error("구글 드라이브에서 가져오지 못했어요", { description: message });
+  }
+
+  /** 구글 로그인 화면으로 이동 (돌아오면 위 효과가 피커를 연다) */
+  function goToGoogle() {
+    const state = crypto.randomUUID();
+    sessionStorage.setItem(PENDING, JSON.stringify({ state, projectId: latest.current.projectId }));
+    const q = new URLSearchParams({
+      client_id: config.clientId,
+      redirect_uri: `${location.origin}${DRIVE_RETURN_PATH}`,
+      response_type: "token",
+      scope: SCOPE,
+      include_granted_scopes: "true",
+      state,
+      prompt: "select_account",
+    });
+    setBusy("구글 로그인 화면으로 이동하는 중…");
+    location.assign(`https://accounts.google.com/o/oauth2/v2/auth?${q}`);
   }
 
   /** 로그인된 뒤: 파일 선택 창 → 내려받기 → 글자 추출·저장 */
@@ -260,29 +285,17 @@ export function DrivePicker({
         latest.current.onAdded(added);
       }
     } catch (e) {
-      fail(e instanceof Error ? e.message : String(e));
+      showError(e instanceof Error ? e.message : String(e));
     }
   }
 
-  /** 버튼을 누른 그 순간에 로그인 창을 연다 (await 없이) */
   function onClick() {
     setError(null);
     setResult(null);
     const token = readDriveToken()?.token;
-    if (token) {
-      void pickAndSave(token);
-      return;
-    }
-    if (!clientRef.current) {
-      fail(
-        ready === "fail"
-          ? "구글 스크립트를 불러오지 못했어요. 광고 차단 확장 프로그램을 끄거나 인터넷 연결을 확인한 뒤 새로 고침해 주세요."
-          : "구글 연결을 준비하는 중이에요. 1~2초 뒤 다시 눌러 주세요."
-      );
-      return;
-    }
-    setBusy("구글 로그인 창에서 계정을 골라 주세요…");
-    clientRef.current.requestAccessToken({ prompt: "" });
+    if (token && ready === "ok") void pickAndSave(token);
+    else if (token && ready === "loading") showError("파일 선택 창을 준비하는 중이에요. 1~2초 뒤 다시 눌러 주세요.");
+    else goToGoogle();
   }
 
   if (!config.ready)
@@ -296,9 +309,9 @@ export function DrivePicker({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={onClick} disabled={!!busy || ready === "loading"}>
-          {busy || ready === "loading" ? <Loader2 className="animate-spin" /> : <Cloud />}
-          {ready === "loading" ? "구글 연결 준비 중…" : connected ? "드라이브에서 파일 고르기" : "구글 드라이브 연결"}
+        <Button onClick={onClick} disabled={!!busy}>
+          {busy ? <Loader2 className="animate-spin" /> : <Cloud />}
+          {connected ? "드라이브에서 파일 고르기" : "구글 드라이브 연결"}
         </Button>
         {connected && !busy && (
           <Button
@@ -306,7 +319,7 @@ export function DrivePicker({
             size="sm"
             onClick={() => {
               const t = readDriveToken();
-              if (t) googleRef.current?.accounts.oauth2.revoke(t.token, () => {});
+              if (t) void fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t.token)}`, { method: "POST" }).catch(() => {});
               saveDriveToken(null);
             }}
           >
@@ -318,8 +331,8 @@ export function DrivePicker({
       </div>
       {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
       <p className="text-xs text-muted-foreground">
-        구글 로그인 후 열리는 창에서 PDF·Word·한글(hwp·hwpx)·구글 문서를 고르면, 고른 파일만 읽어 글자를 저장해요.
-        드라이브의 다른 파일은 보지 않아요.
+        버튼을 누르면 구글 로그인 화면으로 갔다가 이 화면으로 돌아와 파일 선택 창이 열려요. PDF·Word·한글(hwp·hwpx)·구글
+        문서를 고르면 고른 파일만 읽어 글자를 저장해요. 드라이브의 다른 파일은 보지 않아요.
       </p>
       {result && (
         <div className="text-sm">

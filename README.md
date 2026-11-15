@@ -118,7 +118,7 @@ npm run dev
 1. https://console.cloud.google.com 에 구글 계정으로 들어가 위쪽 프로젝트 선택 → **새 프로젝트** → 이름 `thesis-app` → 만들기.
 2. 왼쪽 메뉴 **API 및 서비스 → 라이브러리**에서 **Google Drive API**와 **Google Picker API**를 각각 검색해 **사용** 누르기.
 3. **API 및 서비스 → OAuth 동의 화면**(Google 인증 플랫폼): 앱 이름 `논문작업실`, 사용자 지원 이메일 = 내 이메일, 대상 **외부** → 만들기. **데이터 액세스**에서 범위 추가 → `.../auth/drive.file` 체크 → 저장. **대상**에서 **앱 게시**(프로덕션)를 누르면 교수님 등 누구나 로그인할 수 있어요. (게시 전에는 **테스트 사용자**에 넣은 계정만 돼요)
-4. **API 및 서비스 → 사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID**: 유형 **웹 애플리케이션**, **승인된 JavaScript 원본**에 `https://<내 버셀 주소>` 와 `http://localhost:3000` 추가 → 만들기 → **클라이언트 ID** 복사.
+4. **API 및 서비스 → 사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID**: 유형 **웹 애플리케이션**, **승인된 JavaScript 원본**에 `https://<내 버셀 주소>` 와 `http://localhost:3000` 추가, **승인된 리디렉션 URI**에 `https://<내 버셀 주소>/sources/new` 와 `http://localhost:3000/sources/new` 추가 → 만들기 → **클라이언트 ID** 복사.
 5. 같은 화면에서 **사용자 인증 정보 만들기 → API 키** → 만든 키의 **키 제한**: 애플리케이션 제한 **웹사이트** → `https://<내 버셀 주소>/*`, `http://localhost:3000/*` 추가, API 제한 **Google Picker API** 만 → 저장 → 키 복사.
 6. 위쪽 프로젝트 이름을 눌러 **프로젝트 번호**(숫자) 복사.
 7. 버셀 → 프로젝트 → **Settings → Environment Variables**에 3개 추가 후 **Redeploy**:
