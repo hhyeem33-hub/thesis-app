@@ -242,3 +242,55 @@ export async function updateResearch(input: {
   revalidatePath("/dashboard");
   return { ok: true };
 }
+
+/** 유튜브 스크립트(자막) 붙여넣기에서 시간 표시(0:12, 1:02:33) 줄과 빈 줄을 빼고 문장만 남긴다 */
+function cleanTranscript(raw: string) {
+  return raw
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^\d{1,2}(:\d{2}){1,2}$/.test(l) && !/^\d+분( \d+초)?$|^\d+초$/.test(l))
+    .map((l) => l.replace(/^\d{1,2}(:\d{2}){1,2}\s+/, ""))
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+/**
+ * 유튜브 자료에 스크립트(자막)를 붙여 넣어 저장하고, 바로 AI 판단을 다시 한다.
+ * 내용 = 채널·게시일·주소 머리말 + "## 자막 (직접 붙여넣음)" + 영상 설명(있으면). [보완 필요: 자막…] 표시는 뗀다.
+ */
+export async function saveTranscript(
+  id: string,
+  raw: string
+): Promise<ActionResult & { relevance?: number; classifyError?: string; chars?: number }> {
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
+  try {
+    const source = await getSource(id);
+    if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
+    const transcript = cleanTranscript(raw).slice(0, MAX_CONTENT - 5000);
+    if (transcript.length < 20) return { ok: false, error: "스크립트가 너무 짧아요. 유튜브의 ‘스크립트 표시’ 내용을 통째로 붙여 넣어 주세요." };
+
+    const old = source.content;
+    const head = old.split(/\n## /)[0].trim();
+    const description = old.match(/## 영상 설명\n+([\s\S]*?)(?:\n+\[보완 필요[^\]]*\]|\n## |$)/)?.[1]?.trim() ?? "";
+    const content = [
+      head,
+      `## 자막 (직접 붙여넣음)\n\n${transcript}`,
+      description && description !== "(설명 없음)" ? `## 영상 설명\n\n${description}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    await saveSource({ ...source, content, updatedAt: new Date().toISOString() });
+    refresh(id);
+
+    // 새 내용으로 AI 판단 다시 (실패해도 스크립트 저장은 된 상태)
+    const r = await classifySourceAction(id);
+    return r.ok
+      ? { ok: true, relevance: r.relevance, chars: transcript.length }
+      : { ok: true, classifyError: r.error, chars: transcript.length };
+  } catch (e) {
+    return { ok: false, error: aiErrorMessage(e) };
+  }
+}

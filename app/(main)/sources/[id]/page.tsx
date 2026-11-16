@@ -8,6 +8,7 @@ import { ClassifyButton } from "@/components/classify-button";
 import { DataError } from "@/components/data-error";
 import { GradeBadge } from "@/components/grade-badge";
 import { SettingsSkeleton } from "@/components/page-skeletons";
+import { TranscriptCard } from "@/components/transcript-card";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSource } from "@/lib/sources";
@@ -69,6 +70,14 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
         </div>
         <ClassifyButton sourceId={source.id} again={!!c?.relevance} />
       </div>
+
+      {source.type === "youtube" && (
+        <TranscriptCard
+          sourceId={source.id}
+          hasTranscript={/## 자막/.test(source.content)}
+          url={isUrl ? source.origin : "https://www.youtube.com"}
+        />
+      )}
 
       <Card>
         <CardHeader>
