@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchVersion, restoreVersion, saveDocument, tempSaveDocument } from "@/app/write-actions";
+import { ChapterDrafter } from "@/components/chapter-drafter";
 import { DocExport } from "@/components/doc-export";
 import type { TemplateInfo } from "@/components/hwpx-export";
 import { Hint } from "@/components/hint";
@@ -131,6 +132,29 @@ function Preview({ doc, references }: { doc: Pick<ThesisDoc, "title" | "body" | 
   );
 }
 
+/**
+ * 장 초안을 본문에 합친다 (덮어쓰지 않음).
+ * 같은 장 제목(# 장)이 이미 있으면 그 장의 끝(다음 # 장 앞)에 절들을 붙이고,
+ * 없으면 목차 순서대로 (뒤에 올 장 중 이미 있는 첫 장 앞에, 없으면 맨 끝에) 장을 통째로 넣는다.
+ */
+function mergeChapter(body: string, chapterBody: string, chapter: string, outline: string[]) {
+  const lines = body.split("\n");
+  const at = lines.findIndex((l) => l.trim() === `# ${chapter}`);
+  if (at < 0) {
+    const later = outline.slice(outline.indexOf(chapter) + 1);
+    const next = outline.indexOf(chapter) < 0 ? -1 : lines.findIndex((l) => later.some((c) => l.trim() === `# ${c}`));
+    if (next < 0) return body.trim() ? `${body.replace(/\s+$/, "")}\n\n${chapterBody}` : chapterBody;
+    const head = lines.slice(0, next).join("\n").replace(/\s+$/, "");
+    return `${head ? `${head}\n\n` : ""}${chapterBody}\n\n${lines.slice(next).join("\n")}`;
+  }
+  const sections = chapterBody.split("\n").slice(1).join("\n").trim();
+  let end = lines.findIndex((l, i) => i > at && /^#\s/.test(l));
+  if (end < 0) end = lines.length;
+  const before = lines.slice(0, end).join("\n").replace(/\s+$/, "");
+  const after = lines.slice(end).join("\n");
+  return `${before}\n\n${sections}${after ? `\n\n${after}` : ""}`;
+}
+
 export function WriteEditor({
   initialDoc,
   sources,
@@ -138,6 +162,8 @@ export function WriteEditor({
   drafts,
   templates,
   online,
+  outline,
+  adoptedCount,
 }: {
   initialDoc: ThesisDoc;
   sources: LibrarySource[];
@@ -145,6 +171,10 @@ export function WriteEditor({
   drafts: AiDraftRecord[];
   templates: TemplateInfo[];
   online: boolean;
+  /** 연구 설정의 목차 (장별 AI 초안) */
+  outline: string[];
+  /** 채택한 자료 수 */
+  adoptedCount: number;
 }) {
   const router = useRouter();
   const [doc, setDoc] = useState(initialDoc);
@@ -251,6 +281,21 @@ export function WriteEditor({
       setMemo("");
       toast.success("저장했어요", { description: `히스토리에 기록됨 · ${r.version.chars.toLocaleString()}자` });
     });
+  }
+
+  /** 장별 AI 초안을 본문에 넣고 바로 히스토리에 저장 */
+  async function insertChapter(d: { chapter: string; body: string; footnotes: Footnote[] }) {
+    const next = { ...doc, body: mergeChapter(doc.body, d.body, d.chapter, outline), footnotes: [...doc.footnotes, ...d.footnotes] };
+    const r = await saveDocument({ doc: next, memo: `AI 초안 넣음: ${d.chapter}`.slice(0, 100) });
+    if (!r.ok) {
+      toast.error("본문에 넣지 못했어요", { description: r.error });
+      return false;
+    }
+    setDoc(next);
+    setSavedSnapshot(JSON.stringify(next));
+    setVersions((v) => [r.version, ...v]);
+    toast.success(`‘${d.chapter}’ 초안을 본문에 넣고 저장했어요`, { description: "히스토리에 버전으로 남았어요. 각주·참고문헌도 함께 정리돼요." });
+    return true;
   }
 
   /** 임시저장: 히스토리에 남기지 않고 원고만 보관 */
@@ -595,6 +640,20 @@ export function WriteEditor({
 
           {tab === "drafts" && (
             <div className="flex max-h-[70vh] flex-col gap-2 overflow-y-auto">
+              <ChapterDrafter
+                projectId={doc.projectId}
+                outline={outline}
+                adoptedCount={adoptedCount}
+                disabled={guest}
+                onInsert={insertChapter}
+                renderPreview={(d) => (
+                  <Preview
+                    doc={{ title: doc.title, body: d.body, footnotes: d.footnotes }}
+                    references={buildReferences(d, sources).map((r) => r.text)}
+                  />
+                )}
+              />
+              <p className="mt-2 text-xs font-semibold text-muted-foreground">예전 방식: 프로젝트 화면의 ‘AI로 초안 쓰기’ 결과</p>
               <p className="text-xs text-muted-foreground">
                 ‘AI로 초안 쓰기’로 만든 초안을 불러와 이어 쓸 수 있어요. 불러온 뒤 저장해야 기록돼요.
               </p>

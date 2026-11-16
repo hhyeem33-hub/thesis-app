@@ -312,3 +312,98 @@ ${content || "(내용 없음)"}`,
     summary: o.summary.trim(),
   };
 }
+
+// ── 장별 AI 초안 (채택 자료만 근거로, 문장마다 근거 자료 번호) ─────────────────
+
+/** Claude Haiku 5.5 가격 (100K 토큰 이하 요청, 1M 토큰당 달러) */
+const HAIKU_PRICE = { input: 0.1, output: 0.5 };
+
+const ChapterSchema = z.object({
+  enough: z.boolean().describe("이 장을 쓸 근거가 아래 채택 자료에 충분하면 true, 거의 없으면 false"),
+  reason: z.string().describe("enough 가 false 면 무엇이 부족한지 한 문장, true 면 빈 문자열"),
+  sections: z
+    .array(
+      z.object({
+        title: z.string().describe("절 제목 (번호 없이)"),
+        paragraphs: z.array(
+          z.object({
+            sentences: z.array(
+              z.object({
+                text: z.string().describe("한 문장 (학위논문 문어체 ~이다/~한다)"),
+                sources: z.array(z.string()).describe("이 문장의 근거가 된 자료 번호들 (예: S3). 근거 자료가 없으면 빈 배열"),
+              })
+            ),
+          })
+        ),
+      })
+    )
+    .describe("절 2~3개"),
+});
+
+const CHAPTER_SYSTEM = `너는 한국외국어대학교 대학원생의 학위논문 한 장(章)의 초안을 쓰는 연구 보조자다.
+연구자가 '채택'한 자료만 근거로 쓴다. 자료 밖의 지식으로 내용을 채우지 않는다.
+
+[근거]
+- 문장마다 그 문장의 근거가 된 자료 번호(S1, S2 …)를 sources 에 적는다. 여러 자료면 모두 적는다.
+- 자료에 없는 수치·통계·연도·고유명사·연구 결과는 절대 지어내지 않는다.
+- 근거 자료가 없는 문장(장 도입·연결 문장 등)은 sources 를 비워 두고, 사실을 주장하는 문장이면 문장 끝에 "[확인 필요]"를 붙인다.
+- 자료 내용이 확실하지 않거나 앞부분만 있어서 판단이 어려운 곳도 "[확인 필요]"를 붙인다.
+- 이 장과 관련된 채택 자료가 거의 없으면 억지로 쓰지 말고 enough=false 로 답하고 sections 는 빈 배열로 둔다.
+
+[문체·구성]
+- 학위논문 문어체: "~이다", "~한다", "~하였다". 존댓말·구어체·"저는" 금지. 1인칭은 "본 연구", "연구자".
+- 절(section) 2~3개로 나누고, 절 제목에는 번호를 붙이지 않는다 (양식이 1.1. 번호를 붙인다).
+- 절마다 문단 2~3개, 문단마다 3~5문장의 초안 분량.
+- 다른 장에서 다룰 내용은 짧게만 언급한다.`;
+
+export type ChapterSourceInput = { key: string; title: string; meta: string; summary: string; excerpt: string; topic: string };
+
+export async function writeChapter(input: {
+  chapter: string;
+  research: ResearchBasis;
+  sources: ChapterSourceInput[];
+}) {
+  const client = await getClient();
+  const list = input.sources
+    .map(
+      (s) => `[${s.key}] ${s.title}
+서지: ${s.meta}
+배정된 목차: ${s.topic || "(없음)"}
+요약: ${s.summary || "(없음)"}
+본문 앞부분:
+${s.excerpt || "(본문 없음)"}`
+    )
+    .join("\n\n---\n\n");
+  const response = await client.messages.parse({
+    model: AI_MODEL,
+    max_tokens: 16000,
+    output_config: { effort: "medium", format: zodOutputFormat(ChapterSchema) },
+    system: CHAPTER_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `[연구 설정]
+${basisText(input.research)}
+
+[이번에 쓸 장]
+${input.chapter}
+
+[연구자가 채택한 자료 ${input.sources.length}개]
+${list}`,
+      },
+    ],
+  });
+  if (response.stop_reason === "refusal") throw new Error("AI가 이 장은 쓰지 않겠다고 했어요.");
+  if (response.stop_reason === "max_tokens") throw new Error("초안이 너무 길어져 중간에 끊겼어요. 다시 시도해 주세요.");
+  if (!response.parsed_output) throw new Error("AI 답변을 읽지 못했어요. 다시 시도해 주세요.");
+  const u = response.usage;
+  const inputTokens = u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+  return {
+    draft: response.parsed_output,
+    usage: {
+      inputTokens,
+      outputTokens: u.output_tokens,
+      costUsd: (inputTokens * HAIKU_PRICE.input + u.output_tokens * HAIKU_PRICE.output) / 1_000_000,
+    },
+  };
+}

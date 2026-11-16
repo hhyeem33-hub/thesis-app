@@ -2,7 +2,9 @@
 
 import { guestBlock } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { aiErrorMessage } from "@/lib/ai";
 import { countChars } from "@/lib/bib";
+import { draftChapter, type ChapterDraft } from "@/lib/chapter-draft";
 import { getVersion, listVersions, saveDocOnly, saveDocWithVersion } from "@/lib/documents";
 import { getSource, saveSource } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
@@ -120,5 +122,19 @@ export async function updateSourceBib(id: string, bib: Bib): Promise<Result> {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: message(e) };
+  }
+}
+
+/** 장별 AI 초안 받기 (채택 자료만 근거, 미리보기용 — 본문에는 아직 넣지 않음) */
+export async function draftChapterAction(projectId: string, chapter: string): Promise<ChapterDraft> {
+  const blocked = await guestBlock();
+  if (blocked) return { ok: false, chapter, error: blocked.error };
+  if (!(await getProjects()).some((p) => p.id === projectId)) return { ok: false, chapter, error: "프로젝트를 찾을 수 없어요." };
+  const name = chapter.trim().slice(0, 100);
+  if (!name) return { ok: false, chapter, error: "장을 골라 주세요." };
+  try {
+    return await draftChapter(projectId, name);
+  } catch (e) {
+    return { ok: false, chapter, error: aiErrorMessage(e) };
   }
 }

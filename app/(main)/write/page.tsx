@@ -7,6 +7,7 @@ import { ProjectsSkeleton } from "@/components/page-skeletons";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { buttonVariants } from "@/components/ui/button";
 import { WriteEditor } from "@/components/write-editor";
+import { chapterOutline } from "@/lib/chapter-draft";
 import { ONLINE } from "@/lib/db";
 import { emptyDoc, getDoc, listDrafts, listVersions } from "@/lib/documents";
 import { listTemplates } from "@/lib/hwpx";
@@ -52,7 +53,8 @@ async function WriteContent({
         listDrafts(),
         ONLINE ? Promise.resolve([]) : listTemplates(),
       ]);
-      data = { projects, project, doc, sources, versions, drafts, templates };
+      const { outline } = await chapterOutline(project.id);
+      data = { projects, project, doc, sources, versions, drafts, templates, outline };
     }
   } catch (e) {
     return <DataError error={e} />;
@@ -70,7 +72,7 @@ async function WriteContent({
         를 만들어 주세요.
       </p>
     );
-  const { projects, project, doc, sources, versions, drafts, templates } = data;
+  const { projects, project, doc, sources, versions, drafts, templates, outline } = data;
   return (
     <div className="flex flex-col gap-4">
       <ProjectSwitcher
@@ -93,6 +95,8 @@ async function WriteContent({
         )}
         templates={templates}
         online={ONLINE}
+        outline={outline}
+        adoptedCount={sources.filter((s) => s.classification?.decision?.status === "adopted").length}
       />
     </div>
   );
