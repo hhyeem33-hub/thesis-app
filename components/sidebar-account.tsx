@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { LogIn, LogOut, Monitor, UserRound } from "lucide-react";
-import { exitGuest, signOut } from "@/app/auth-actions";
+import { exitGuest, localSignedInEmail, signOut } from "@/app/auth-actions";
 import { DriveLive } from "@/components/google-status";
 import { currentUser, isGuest } from "@/lib/auth";
 import { checkFour } from "@/lib/connections";
@@ -35,14 +35,14 @@ function split(summary: string) {
 
 export async function SidebarAccount() {
   await connection();
-  const [user, dots, guest] = await Promise.all([currentUser(), checkFour().catch(() => []), isGuest()]);
+  const [user, dots, guest, localEmail] = await Promise.all([currentUser(), checkFour().catch(() => []), isGuest(), localSignedInEmail()]);
   return (
     <div className="flex flex-col gap-2 px-1 py-1 text-xs group-data-[collapsible=icon]:hidden">
       <div className="flex items-center gap-2">
         {ONLINE ? <UserRound className="size-4 shrink-0 text-primary" /> : <Monitor className="size-4 shrink-0 text-primary" />}
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium" title={user?.email}>
-            {ONLINE ? (guest ? "둘러보기 모드" : user?.email || "로그인 안 됨") : "내 컴퓨터"}
+            {ONLINE ? (guest ? "둘러보기 모드" : user?.email || "로그인 안 됨") : localEmail || "내 컴퓨터"}
           </p>
           <p className="text-[11px] text-muted-foreground">
             {ONLINE
@@ -51,7 +51,7 @@ export async function SidebarAccount() {
                 : user?.isOwner
                   ? "앱 주인 계정"
                   : "내 자료는 나만 봐요"
-              : "로그인 없이 쓰는 중"}
+              : "내 컴퓨터 · 자료는 이 컴퓨터에 저장"}
           </p>
         </div>
       </div>
@@ -81,7 +81,7 @@ export async function SidebarAccount() {
           </button>
         </form>
       )}
-      {ONLINE && user && (
+      {((ONLINE && user) || localEmail) && (
         <form action={signOut}>
           <button
             type="submit"

@@ -29,6 +29,8 @@ export function LoginPanel() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [google, setGoogle] = useState(false);
+  /** 내 컴퓨터(localhost): 주인 계정 로그인만 (둘러보기·메일 링크 없음) */
+  const [local, setLocal] = useState(false);
   const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
   const [resetSentTo, setResetSentTo] = useState<string | null>(null);
   const [busy, setBusy] = useState<"login" | "google" | "link" | "reset" | null>(null);
@@ -38,7 +40,13 @@ export function LoginPanel() {
   // 구글 로그인은 슈파베이스에서 켰을 때만 버튼을 보여 준다
   useEffect(() => {
     let alive = true;
-    loginOptions().then((o) => alive && setGoogle(o.google)).catch(() => {});
+    loginOptions()
+      .then((o) => {
+        if (!alive) return;
+        setGoogle(o.google);
+        setLocal(o.local);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -89,6 +97,11 @@ export function LoginPanel() {
 
   /** 비밀번호를 잊었을 때: 위 칸의 이메일로 재설정 링크 보내기 */
   function sendReset() {
+    // 내 컴퓨터에서는 메일 없이 관리자 비밀번호 바꾸기 화면으로
+    if (local) {
+      router.push("/admin-password");
+      return;
+    }
     if (!email.trim()) {
       toast.info("위 칸에 이메일을 먼저 적어 주세요", { description: "그 이메일로 비밀번호 재설정 링크를 보내 드려요." });
       document.getElementById("login-email")?.focus();
@@ -107,7 +120,9 @@ export function LoginPanel() {
     <div className="flex flex-col gap-4 rounded-xl border border-gold/40 bg-card/90 p-6 shadow-sm backdrop-blur">
       <div>
         <p className="font-serif text-xl font-bold">시작하기</p>
-        <p className="text-sm text-muted-foreground">처음 쓰는 이메일이면 계정이 바로 만들어져요.</p>
+        <p className="text-sm text-muted-foreground">
+          {local ? "내 컴퓨터에서 쓰는 중이에요. 앱 주인 계정(온라인과 같은 이메일·비밀번호)으로 들어와요." : "처음 쓰는 이메일이면 계정이 바로 만들어져요."}
+        </p>
       </div>
 
       {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
@@ -192,15 +207,17 @@ export function LoginPanel() {
         </>
       )}
 
-      <form action={enterGuest} className="flex flex-col gap-1">
-        <Button type="submit" variant="ghost" className="h-10 border border-dashed border-gold/60 bg-background/60" disabled={!!busy}>
-          <Eye />
-          둘러보기 (로그인 없이 보기)
-        </Button>
-        <p className="text-center text-xs text-muted-foreground">만든 사람의 자료·AI 분류 결과를 읽기 전용으로 볼 수 있어요.</p>
-      </form>
+      {!local && (
+        <form action={enterGuest} className="flex flex-col gap-1">
+          <Button type="submit" variant="ghost" className="h-10 border border-dashed border-gold/60 bg-background/60" disabled={!!busy}>
+            <Eye />
+            둘러보기 (로그인 없이 보기)
+          </Button>
+          <p className="text-center text-xs text-muted-foreground">만든 사람의 자료·AI 분류 결과를 읽기 전용으로 볼 수 있어요.</p>
+        </form>
+      )}
 
-      {linkSentTo ? (
+      {local ? null : linkSentTo ? (
         <p className="inline-flex items-start gap-1.5 text-xs text-muted-foreground">
           <MailCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
           {linkSentTo} 로 로그인 링크를 보냈어요. 이 브라우저에서 메일의 링크를 눌러 주세요.

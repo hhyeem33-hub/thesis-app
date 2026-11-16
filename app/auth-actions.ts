@@ -4,6 +4,8 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AUTH_KEY, AUTH_URL, authClient, currentUser, GUEST_COOKIE, isOwnerEmail } from "@/lib/auth";
 import { db, dbPrepareAccount } from "@/lib/db";
+import { createClient } from "@supabase/supabase-js";
+import { LOCAL_SESSION_COOKIE, LOCAL_SESSION_DAYS, signLocalSession, verifyLocalSession } from "@/lib/local-session";
 import { ONLINE } from "@/lib/online";
 
 type Result = { ok: true; url?: string } | { ok: false; error: string };
@@ -50,11 +52,56 @@ export async function googleLoginUrl(): Promise<Result> {
 }
 
 export async function signOut() {
+  if (!ONLINE) {
+    (await cookies()).delete(LOCAL_SESSION_COOKIE);
+    redirect("/welcome");
+  }
   if (ONLINE) {
     const supabase = await authClient();
     await supabase.auth.signOut();
   }
-  redirect(ONLINE ? "/welcome" : "/");
+  redirect("/welcome");
+}
+
+/**
+ * 내 컴퓨터(localhost) 로그인: 온라인과 같은 슈파베이스 계정(주인 이메일 + 비밀번호)으로 확인만 하고,
+ * 맞으면 서명한 쿠키(local_session)를 둔다. 자료는 그대로 내 컴퓨터(data/*.json)에 저장한다.
+ */
+async function localPasswordLogin(email: string, password: string): Promise<{ ok: false; error: string } | { ok: true; created: boolean }> {
+  const e = email.trim().toLowerCase();
+  const owner = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = AUTH_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!owner || !url || !key)
+    return { ok: false, error: ".env.local 에 OWNER_EMAIL · SUPABASE_URL · SUPABASE_SECRET_KEY 가 있어야 내 컴퓨터에서 로그인할 수 있어요." };
+  if (!EMAIL_RE.test(e)) return { ok: false, error: "이메일 주소를 확인해 주세요." };
+  if (e !== owner) return { ok: false, error: "내 컴퓨터에서는 앱 주인 계정으로만 들어올 수 있어요." };
+  if (password.length < MIN_PASSWORD) return { ok: false, error: `비밀번호는 ${MIN_PASSWORD}자 이상으로 적어 주세요.` };
+  // 비밀번호 확인만 하는 일회용 연결 (로그인 상태는 저장하지 않음)
+  const check = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await check.auth.signInWithPassword({ email: e, password });
+  if (error)
+    return {
+      ok: false,
+      error: /invalid login credentials/i.test(error.message)
+        ? "비밀번호가 맞지 않아요. 잊으셨으면 ‘비밀번호를 잊으셨나요?’로 관리자 비밀번호 바꾸기 화면에서 새로 정해 주세요."
+        : friendly(error.message),
+    };
+  const store = await cookies();
+  store.set(LOCAL_SESSION_COOKIE, await signLocalSession(e), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false,
+    path: "/",
+    maxAge: LOCAL_SESSION_DAYS * 24 * 60 * 60,
+  });
+  return { ok: true, created: false };
+}
+
+/** 내 컴퓨터에서 로그인한 이메일 (사이드바 표시용, 없으면 null) */
+export async function localSignedInEmail(): Promise<string | null> {
+  if (ONLINE) return null;
+  return verifyLocalSession((await cookies()).get(LOCAL_SESSION_COOKIE)?.value);
 }
 
 // ── 이메일 + 비밀번호 ────────────────────────────────────────────────────────
@@ -68,7 +115,7 @@ const MIN_PASSWORD = 6;
  * - 처음 쓰는 이메일이면 계정을 만들고 바로 로그인 (메일 확인 없이: 서버 관리 권한으로 '확인됨'으로 만든다)
  */
 export async function passwordLogin(email: string, password: string): Promise<{ ok: false; error: string } | { ok: true; created: boolean }> {
-  if (!ONLINE) return { ok: false, error: "내 컴퓨터에서는 로그인 없이 써요." };
+  if (!ONLINE) return localPasswordLogin(email, password);
   const e = email.trim().toLowerCase();
   if (!EMAIL_RE.test(e)) return { ok: false, error: "이메일 주소를 확인해 주세요." };
   if (password.length < MIN_PASSWORD) return { ok: false, error: `비밀번호는 ${MIN_PASSWORD}자 이상으로 적어 주세요.` };
@@ -105,14 +152,15 @@ export async function passwordLogin(email: string, password: string): Promise<{ 
 }
 
 /** 로그인 화면에 보여 줄 방법 (구글은 슈파베이스에서 켰을 때만) */
-export async function loginOptions(): Promise<{ google: boolean }> {
-  if (!ONLINE || !AUTH_URL || !AUTH_KEY) return { google: false };
+export async function loginOptions(): Promise<{ google: boolean; local: boolean }> {
+  if (!ONLINE) return { google: false, local: true };
+  if (!AUTH_URL || !AUTH_KEY) return { google: false, local: false };
   try {
     const res = await fetch(`${AUTH_URL}/auth/v1/settings`, { headers: { apikey: AUTH_KEY }, cache: "no-store" });
     const s = (await res.json()) as { external?: { google?: boolean } };
-    return { google: !!s.external?.google };
+    return { google: !!s.external?.google, local: false };
   } catch {
-    return { google: false };
+    return { google: false, local: false };
   }
 }
 
