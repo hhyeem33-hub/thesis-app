@@ -79,8 +79,9 @@ export async function buildHwpx(
 ): Promise<Buffer> {
   const references = buildReferences(doc, sources).map((r) => r.text);
   const manuscript = docToManuscript(doc, references);
-  if (manuscript.chapters.length < 2)
-    throw new Error("장 제목(# 으로 시작하는 줄)이 2개 이상 있어야 해요. 예: # 서론, # 결론");
+  // 쓰는 중인 원고도 내보낼 수 있게 장 1개부터 허용 (장이 하나도 없으면 docToManuscript 가 본문을 ‘서론’으로 묶음)
+  if (!manuscript.chapters.length || !manuscript.chapters.some((c) => c.blocks.length || c.sections.length))
+    throw new Error("본문이 비어 있어요. 장 제목(# 서론)과 내용을 적고 저장해 주세요.");
   if (!manuscript.references.length)
     manuscript.references = ["[보완 필요] 참고문헌이 없어요. ‘자료로 각주’로 출처를 달면 자동으로 들어가요."];
 

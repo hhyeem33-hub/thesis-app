@@ -347,8 +347,8 @@ def check_manuscript(m: dict) -> None:
     missing = [k for k in REQUIRED if not m.get(k)]
     if missing:
         sys.exit(f"원고에 빠진 항목이 있어요: {', '.join(missing)}")
-    if len(m["chapters"]) < 2:
-        sys.exit("장은 최소 2개(서론, 결론) 이상이어야 해요.")
+    if len(m["chapters"]) < 1:
+        sys.exit("장이 하나도 없어요. 적어도 서론 1개는 있어야 해요.")
 
 
 def drive_root() -> Path:
