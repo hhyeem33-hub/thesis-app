@@ -104,10 +104,11 @@ function docMd(doc) {
   return [`# ${doc.title || "(제목 없음)"}`, "", body.replace(/^# /gm, "## ").replace(/^## ## /gm, "### "), "", ...notes, ""].join("\n");
 }
 
-// 1) 내보낼 것 정하기: 채택한 자료 (AI 논문 프로젝트 것을 먼저)
+// 1) 내보낼 것 정하기: 기본은 채택한 자료, --all 이면 '제외'한 것만 빼고 전부 (AI 논문 프로젝트 것을 먼저)
+const ALL = process.argv.includes("--all");
 const docProject = projects.find((p) => p.name === DOC_PROJECT);
 const adopted = sources
-  .filter((s) => s.classification?.decision?.status === "adopted")
+  .filter((s) => (ALL ? s.classification?.decision?.status !== "excluded" : s.classification?.decision?.status === "adopted"))
   .sort((a, b) => Number(b.projectId === docProject?.id) - Number(a.projectId === docProject?.id));
 const plan = Object.fromEntries(Object.keys(FOLDERS).map((k) => [k, []]));
 for (const s of adopted) plan[folderFor(s)].push({ name: `${safe(s.title)}.md`, text: sourceMd(s), title: s.title });
@@ -133,6 +134,7 @@ if (!APPLY) {
 // 2) 쓰기 (새 파일만, 같은 이름은 건너뜀)
 let written = 0;
 let skipped = 0;
+let refreshed = 0;
 const writeNew = (file, text) => {
   try {
     writeFileSync(file, text, { encoding: "utf8", flag: "wx" });
@@ -156,11 +158,14 @@ for (const [k, label] of Object.entries(FOLDERS)) {
       }
     }
   else for (const it of plan[k]) writeNew(path.join(dir, it.name), it.text);
-  // 00_목록.md : 지금 폴더에 있는 파일 목록
+  // 00_목록.md : 지금 폴더에 있는 파일 목록. 이 도구가 만든 목록(첫 줄 "# <폴더> 목록")만 새로 맞추고, 다른 파일은 건드리지 않는다
   const files = readdirSync(dir).filter((f) => f !== "00_목록.md").sort((a, b) => a.localeCompare(b, "ko"));
-  writeNew(
-    path.join(dir, "00_목록.md"),
-    [`# ${label} 목록`, "", `파일 ${files.length}개 · ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 기준`, "", ...files.map((f, i) => `${i + 1}. ${f}`), ""].join("\n")
-  );
+  const listFile = path.join(dir, "00_목록.md");
+  const header = `# ${label} 목록`;
+  const listText = [header, "", `파일 ${files.length}개 · ${new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} 기준`, "", ...files.map((f, i) => `${i + 1}. ${f}`), ""].join("\n");
+  if (existsSync(listFile) && readFileSync(listFile, "utf8").split("\n")[0].trim() === header) {
+    writeFileSync(listFile, listText, "utf8");
+    refreshed++;
+  } else writeNew(listFile, listText);
 }
-console.log(`완료: 새로 쓴 파일 ${written}개 · 같은 이름이 있어 건너뜀 ${skipped}개 (덮어쓰거나 지운 것 없음)`);
+console.log(`완료: 새로 쓴 파일 ${written}개 · 같은 이름이 있어 건너뜀 ${skipped}개 · 목록 새로 맞춤 ${refreshed}개 (자료 파일은 덮어쓰거나 지운 것 없음)`);
