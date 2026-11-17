@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Cloud, Loader2, LogOut } from "lucide-react";
+import { Cloud, FolderDown, Loader2, LogOut } from "lucide-react";
+import { ensureProjectNamed, existingDriveOrigins } from "@/app/intake-actions";
 import { toast } from "sonner";
 import { readDriveToken, saveDriveToken, useDriveConnected } from "@/components/google-status";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,14 @@ import { DRIVE_EXT, DRIVE_MIME, type GoogleConfig } from "@/lib/google";
 // 구글 드라이브 연결 (브라우저에서) — "화면 이동(리다이렉트)" 방식
 // 버튼 → 구글 로그인 화면으로 이동 → 허용 → /sources/new 로 돌아옴(#access_token=…) → 바로 파일 선택 창(Picker)
 // 팝업을 쓰지 않아서 크롬의 팝업 차단·창 격리(COOP) 때문에 로그인 창이 바로 닫히는 문제가 없다.
-// 권한은 drive.file — "내가 고른 파일만" 읽을 수 있어서 드라이브 전체를 보지 않는다.
+// 권한은 drive.readonly — "폴더 통째로 가져오기"에서 고른 폴더 안의 파일 목록을 읽으려면 필요하다 (읽기만, 바꾸지 않음).
 
-const SCOPE = "https://www.googleapis.com/auth/drive.file";
+const SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const FOLDER = "application/vnd.google-apps.folder";
+/** 지금 로그인이 어떤 권한으로 받은 것인지 (이 탭에서만) */
+const SCOPE_MARK = "gdrive_scope";
+/** 폴더 통째로 가져오기 한 번에 다룰 최대 파일 수 */
+const MAX_FOLDER_FILES = 500;
 const GOOGLE_DOC = "application/vnd.google-apps.document";
 const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 /** 버셀 서버가 한 번에 받을 수 있는 크기 (요청 4.5MB 제한) */
@@ -29,8 +35,9 @@ type PickerGlobal = {
       setMimeTypes(m: string): unknown;
       setIncludeFolders(b: boolean): unknown;
       setMode(m: unknown): unknown;
+      setSelectFolderEnabled(b: boolean): unknown;
     };
-    ViewId: { DOCS: unknown };
+    ViewId: { DOCS: unknown; FOLDERS: unknown };
     DocsViewMode: { LIST: unknown };
     Feature: { MULTISELECT_ENABLED: unknown };
     Action: { PICKED: string; CANCEL: string };
@@ -139,10 +146,10 @@ async function download(doc: PickedDoc, token: string): Promise<File> {
  * 구글에서 돌아왔는지: 주소 뒤(#)의 access_token·state 를 읽고 주소에서 지운다.
  * 자료 수집 화면이 Google Drive 탭을 바로 열 수 있게 밖에서도 쓴다.
  */
-export function readDriveReturn(): { token?: string; expiresIn: number; error?: string; projectId?: string } | null {
+export function readDriveReturn(): { token?: string; expiresIn: number; error?: string; projectId?: string; mode?: "files" | "folder" } | null {
   if (typeof window === "undefined" || !/[#&](access_token|error)=/.test(location.hash)) return null;
   const p = new URLSearchParams(location.hash.slice(1));
-  let pending: { state?: string; projectId?: string } = {};
+  let pending: { state?: string; projectId?: string; mode?: "files" | "folder" } = {};
   try {
     pending = JSON.parse(sessionStorage.getItem(PENDING) ?? "{}");
   } catch {}
@@ -151,7 +158,66 @@ export function readDriveReturn(): { token?: string; expiresIn: number; error?: 
     expiresIn: Number(p.get("expires_in")) || 3600,
     error: p.get("error") ?? (p.get("state") !== pending.state ? "state_mismatch" : undefined),
     projectId: pending.projectId,
+    mode: pending.mode,
   };
+}
+
+type FolderFile = { id: string; name: string; mimeType: string; origin: string; category: string };
+class ScopeError extends Error {}
+
+/** 메인 폴더 고르기 (폴더만 보이는 선택 창) */
+function pickFolder(google: PickerGlobal, cfg: GoogleConfig, token: string): Promise<{ id: string; name: string } | null> {
+  return new Promise((resolve) => {
+    const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS);
+    view.setIncludeFolders(true);
+    view.setSelectFolderEnabled(true);
+    view.setMimeTypes(FOLDER);
+    new google.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(token)
+      .setDeveloperKey(cfg.apiKey)
+      .setAppId(cfg.appId)
+      .setOrigin(location.origin)
+      .setLocale("ko")
+      .setTitle("통째로 가져올 메인 폴더 고르기")
+      .setCallback((d) => {
+        if (d.action === google.picker.Action.PICKED) resolve(d.docs?.[0] ? { id: d.docs[0].id, name: d.docs[0].name } : null);
+        else if (d.action === google.picker.Action.CANCEL) resolve(null);
+      })
+      .build()
+      .setVisible(true);
+  });
+}
+
+/** 폴더 안을 하위 폴더까지 훑어서 가져올 수 있는 파일 목록 (분류 = 메인 폴더 아래 경로) */
+async function listFolder(rootId: string, token: string): Promise<FolderFile[]> {
+  const out: FolderFile[] = [];
+  const queue: { id: string; path: string[] }[] = [{ id: rootId, path: [] }];
+  while (queue.length && out.length < MAX_FOLDER_FILES) {
+    const { id, path } = queue.shift()!;
+    let pageToken = "";
+    do {
+      const q = new URLSearchParams({
+        q: `'${id}' in parents and trashed = false`,
+        fields: "nextPageToken, files(id, name, mimeType)",
+        pageSize: "1000",
+        supportsAllDrives: "true",
+        includeItemsFromAllDrives: "true",
+        ...(pageToken ? { pageToken } : {}),
+      });
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?${q}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 401 || res.status === 403) throw new ScopeError("scope");
+      if (!res.ok) throw new Error(`폴더 목록을 읽지 못했어요 (${res.status})`);
+      const data = (await res.json()) as { nextPageToken?: string; files?: { id: string; name: string; mimeType: string }[] };
+      for (const f of data.files ?? []) {
+        if (f.mimeType === FOLDER) queue.push({ id: f.id, path: [...path, f.name] });
+        else if (f.mimeType === GOOGLE_DOC || DRIVE_EXT.some((e) => f.name.toLowerCase().endsWith(e)))
+          out.push({ ...f, origin: `https://drive.google.com/file/d/${f.id}/view`, category: path.join(" / ") });
+      }
+      pageToken = data.nextPageToken ?? "";
+    } while (pageToken && out.length < MAX_FOLDER_FILES);
+  }
+  return out.slice(0, MAX_FOLDER_FILES);
 }
 
 export function DrivePicker({
@@ -168,6 +234,15 @@ export function DrivePicker({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ added: number; skipped: number; failed: { name: string; error: string }[] } | null>(null);
+  const [progress, setProgress] = useState<{
+    folder: string;
+    total: number;
+    done: number;
+    added: string[];
+    skipped: number;
+    failed: { name: string; error: string }[];
+    running: boolean;
+  } | null>(null);
   const googleRef = useRef<PickerGlobal | null>(null);
   const latest = useRef({ projectId, onAdded });
   useEffect(() => {
@@ -182,7 +257,10 @@ export function DrivePicker({
       // 주소창의 #access_token=… 은 바로 지운다 (기록·공유에 남지 않게)
       history.replaceState(null, "", `${location.pathname}?tab=drive`);
       sessionStorage.removeItem(PENDING);
-      if (back.token) saveDriveToken({ token: back.token, exp: Date.now() + back.expiresIn * 1000 });
+      if (back.token) {
+        saveDriveToken({ token: back.token, exp: Date.now() + back.expiresIn * 1000 });
+        sessionStorage.setItem(SCOPE_MARK, SCOPE);
+      }
     }
     let alive = true;
     loadPicker()
@@ -190,7 +268,7 @@ export function DrivePicker({
         if (!alive) return;
         googleRef.current = g;
         setReady("ok");
-        if (back?.token) void pickAndSave(back.token);
+        if (back?.token) void (back.mode === "folder" ? importFolder(back.token) : pickAndSave(back.token));
         else if (back) showError(koreanOAuthError(back.error ?? "unknown"));
       })
       .catch(() => {
@@ -217,9 +295,9 @@ export function DrivePicker({
   }
 
   /** 구글 로그인 화면으로 이동 (돌아오면 위 효과가 피커를 연다) */
-  function goToGoogle() {
+  function goToGoogle(mode: "files" | "folder" = "files") {
     const state = crypto.randomUUID();
-    sessionStorage.setItem(PENDING, JSON.stringify({ state, projectId: latest.current.projectId }));
+    sessionStorage.setItem(PENDING, JSON.stringify({ state, projectId: latest.current.projectId, mode }));
     const q = new URLSearchParams({
       client_id: config.clientId,
       redirect_uri: `${location.origin}${DRIVE_RETURN_PATH}`,
@@ -289,6 +367,92 @@ export function DrivePicker({
     }
   }
 
+  /** 폴더 통째로: 메인 폴더 고르기 → 하위 폴더까지 목록 → 이미 있는 것 건너뛰고 하나씩 저장 (하위 폴더 이름 = 분류) */
+  async function importFolder(token: string) {
+    const google = googleRef.current;
+    if (!google) return;
+    try {
+      setBusy("가져올 메인 폴더를 고르는 중…");
+      const folder = await pickFolder(google, config, token);
+      if (!folder) {
+        setBusy(null);
+        return;
+      }
+      setBusy(`‘${folder.name}’ 안의 파일 목록을 읽는 중…`);
+      let files: FolderFile[];
+      try {
+        files = await listFolder(folder.id, token);
+      } catch (e) {
+        if (e instanceof ScopeError) {
+          // 예전(drive.file) 로그인으로는 폴더 안을 못 읽는다 → 새 권한으로 다시 로그인
+          saveDriveToken(null);
+          toast.info("폴더 안을 읽으려면 구글 로그인을 한 번 더 해야 해요", { description: "드라이브 읽기 권한을 새로 받아요." });
+          goToGoogle("folder");
+          return;
+        }
+        throw e;
+      }
+      if (!files.length) {
+        setBusy(null);
+        toast.info(`‘${folder.name}’ 안에 PDF·Word·한글·구글 문서가 없어요`);
+        return;
+      }
+      setBusy(`‘${folder.name}’ 프로젝트에 연결하는 중…`);
+      const proj = await ensureProjectNamed(folder.name);
+      if (!proj.ok) throw new Error(proj.error);
+      const have = new Set(await existingDriveOrigins(files.map((f) => f.origin)));
+      const todo = files.filter((f) => !have.has(f.origin));
+      const p = { total: files.length, done: have.size, added: [] as string[], skipped: have.size, failed: [] as { name: string; error: string }[] };
+      setProgress({ ...p, folder: folder.name, running: true });
+      for (const f of todo) {
+        setBusy(`가져오는 중… (${p.done + 1}/${p.total}) ${f.name}`);
+        try {
+          const file = await download({ id: f.id, name: f.name, mimeType: f.mimeType }, token);
+          if (file.size > MAX_UPLOAD) throw new Error("4MB가 넘어 온라인에서는 가져올 수 없어요.");
+          const form = new FormData();
+          form.append("projectId", proj.id);
+          form.append("files", file);
+          form.append("origins", f.origin);
+          form.append("categories", f.category);
+          const res = await fetch("/api/sources/upload", { method: "POST", body: form });
+          const data = (await res.json().catch(() => ({}))) as {
+            added?: string[];
+            skipped?: string[];
+            failed?: { name: string; error: string }[];
+            error?: string;
+          };
+          if (!res.ok) throw new Error(res.status === 413 ? "파일이 너무 커요 (4MB까지)." : data.error || "저장하지 못했어요.");
+          p.added.push(...(data.added ?? []));
+          p.skipped += data.skipped?.length ?? 0;
+          p.failed.push(...(data.failed ?? []));
+        } catch (e) {
+          p.failed.push({ name: f.name, error: e instanceof Error ? e.message : String(e) });
+        }
+        p.done++;
+        setProgress({ ...p, folder: folder.name, running: true });
+      }
+      setProgress({ ...p, folder: folder.name, running: false });
+      setBusy(null);
+      toast.success(`‘${folder.name}’ 폴더: ${p.added.length}개 저장 · ${p.skipped}개 건너뜀${p.failed.length ? ` · ${p.failed.length}개 실패` : ""}`, {
+        description: proj.created ? `‘${folder.name}’ 프로젝트를 새로 만들어 연결했어요.` : `‘${folder.name}’ 프로젝트에 연결했어요.`,
+      });
+      if (p.added.length) latest.current.onAdded(p.added);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function onFolderClick() {
+    setError(null);
+    setResult(null);
+    setProgress(null);
+    // 예전 권한(drive.file)으로 받은 로그인은 폴더 안을 못 읽으므로 새로 로그인
+    const token = sessionStorage.getItem(SCOPE_MARK) === SCOPE ? readDriveToken()?.token : undefined;
+    if (token && ready === "ok") void importFolder(token);
+    else if (token && ready === "loading") showError("파일 선택 창을 준비하는 중이에요. 1~2초 뒤 다시 눌러 주세요.");
+    else goToGoogle("folder");
+  }
+
   function onClick() {
     setError(null);
     setResult(null);
@@ -313,6 +477,10 @@ export function DrivePicker({
           {busy ? <Loader2 className="animate-spin" /> : <Cloud />}
           {connected ? "드라이브에서 파일 고르기" : "구글 드라이브 연결"}
         </Button>
+        <Button variant="outline" onClick={onFolderClick} disabled={!!busy}>
+          <FolderDown />
+          폴더 통째로 가져오기
+        </Button>
         {connected && !busy && (
           <Button
             variant="ghost"
@@ -330,9 +498,39 @@ export function DrivePicker({
         {busy && <span className="text-sm text-muted-foreground">{busy}</span>}
       </div>
       {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {progress && (
+        <div className="flex flex-col gap-1 rounded-lg border bg-card p-3 text-sm">
+          <p className="font-medium">
+            ‘{progress.folder}’ 폴더 {progress.done}/{progress.total}
+            <span className="font-normal text-muted-foreground">
+              {" "}
+              · 저장 {progress.added.length} · 이미 있어 건너뜀 {progress.skipped} · 실패 {progress.failed.length}
+            </span>
+          </p>
+          <div
+            className="h-2 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuenow={progress.done}
+            aria-valuemin={0}
+            aria-valuemax={progress.total}
+          >
+            <div
+              className="h-full rounded-full bg-primary transition-[width]"
+              style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }}
+            />
+          </div>
+          {!progress.running &&
+            progress.failed.map((f) => (
+              <p key={f.name} className="text-xs text-destructive">
+                {f.name}: {f.error}
+              </p>
+            ))}
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
-        버튼을 누르면 구글 로그인 화면으로 갔다가 이 화면으로 돌아와 파일 선택 창이 열려요. PDF·Word·한글(hwp·hwpx)·구글
-        문서를 고르면 고른 파일만 읽어 글자를 저장해요. 드라이브의 다른 파일은 보지 않아요.
+        버튼을 누르면 구글 로그인 화면으로 갔다가 이 화면으로 돌아와 선택 창이 열려요. <b>폴더 통째로 가져오기</b>는 메인 폴더
+        하나를 고르면 하위 폴더까지 PDF·Word·한글(hwp·hwpx)·구글 문서를 모두 가져와요. 하위 폴더 이름은 자료의 분류로, 메인 폴더
+        이름은 프로젝트로 연결되고, 이미 가져온 파일은 건너뛰어요. 드라이브는 읽기만 해요.
       </p>
       {result && (
         <div className="text-sm">

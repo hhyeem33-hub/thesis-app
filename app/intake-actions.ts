@@ -6,6 +6,7 @@ import { fetchLink } from "@/lib/link-import";
 import { addSources, listDriveFolder, readDriveFiles, scanObsidian } from "@/lib/source-intake";
 import { getSources } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
+import { createProject } from "@/app/actions";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -87,4 +88,23 @@ export async function importDriveFiles(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** 폴더 통째로 가져오기 전에: 이 드라이브 파일 주소들 중 이미 자료로 있는 것 (다시 받지 않게) */
+export async function existingDriveOrigins(urls: string[]): Promise<string[]> {
+  const have = new Set((await getSources()).map((s) => s.origin));
+  return urls.filter((u) => have.has(u));
+}
+
+/** 메인 폴더 이름과 같은 프로젝트를 찾고, 없으면 새로 만든다 (만든 프로젝트 id) */
+export async function ensureProjectNamed(name: string): Promise<Result<{ id: string; created: boolean }>> {
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
+  const clean = name.trim().slice(0, 60);
+  const found = (await getProjects()).find((p) => p.name === clean);
+  if (found) return { ok: true, id: found.id, created: false };
+  const r = await createProject({ name: clean, description: "구글 드라이브 폴더에서 가져온 프로젝트" });
+  if (!r.ok) return { ok: false, error: `‘${clean}’ 프로젝트를 만들지 못했어요: ${r.error}` };
+  const made = (await getProjects()).find((p) => p.name === clean);
+  return made ? { ok: true, id: made.id, created: true } : { ok: false, error: "프로젝트를 만들었지만 찾지 못했어요." };
 }

@@ -10,6 +10,7 @@ import { GradeBadge } from "@/components/grade-badge";
 import { PageHeader } from "@/components/page-header";
 import { ProjectsSkeleton } from "@/components/page-skeletons";
 import { ResearchFirstBanner } from "@/components/research-first-banner";
+import { getProjects } from "@/lib/store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatReference, NEED } from "@/lib/bib";
 import { countAiOutputs, getResearch, getSources } from "@/lib/sources";
@@ -84,11 +85,24 @@ async function DashboardContent() {
   await connection();
   let data;
   try {
-    data = await Promise.all([getSources(), getResearch(), countAiOutputs()]);
+    data = await Promise.all([getSources(), getResearch(), countAiOutputs(), getProjects()]);
   } catch (e) {
     return <DataError error={e} />;
   }
-  const [sources, research, aiCount] = data;
+  const [sources, research, aiCount, projects] = data;
+
+  // 구글 드라이브에서 가져온 자료: 메인 폴더(= 연결된 프로젝트) / 하위 폴더(= 분류) 별 수
+  const projectName = new Map(projects.map((p) => [p.id, p.name]));
+  const fromDrive = sources.filter((s) => s.origin.startsWith("https://drive.google.com/") || s.origin.startsWith("구글 드라이브:"));
+  const driveCount = new Map<string, number>();
+  for (const s of fromDrive) {
+    const key = `${(s.projectId && projectName.get(s.projectId)) || "프로젝트 없음"} / ${s.bib?.category || "(메인 폴더 바로 아래)"}`;
+    driveCount.set(key, (driveCount.get(key) ?? 0) + 1);
+  }
+  const driveData = [...driveCount]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"))
+    .slice(0, 10)
+    .map(([label, value]) => ({ label, value }));
 
   // 관련도 0 = 연구자가 먼저 결정했지만 AI 판단은 아직 없는 자료
   const classified = sources.filter((s) => (s.classification?.relevance ?? 0) > 0);
@@ -205,6 +219,21 @@ async function DashboardContent() {
               <DonutChart data={topicData} centerLabel="자료" />
             ) : (
               <p className="text-sm text-muted-foreground">AI 판단을 하면 토픽이 생겨요.</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>드라이브 폴더별 자료 수</CardTitle>
+            <CardDescription>메인 폴더(프로젝트) / 하위 폴더(분류) · 구글 드라이브 자료 {fromDrive.length}개</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {driveData.length ? (
+              <BarChart data={driveData} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                자료 수집 → Google Drive의 ‘폴더 통째로 가져오기’로 가져오면 폴더별로 보여요.
+              </p>
             )}
           </CardContent>
         </Card>
