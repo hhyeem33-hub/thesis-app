@@ -110,7 +110,7 @@ function SidebarNav({ active }: { active: string | undefined }) {
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 isActive={active === item.href}
-                className="h-10 data-active:bg-orange/18 data-active:shadow-[inset_3px_0_0_var(--orange)] data-active:[&_svg]:text-orange"
+                className="h-10 data-active:bg-ivory data-active:shadow-[inset_3px_0_0_var(--orange)] data-active:[&_svg]:text-orange"
                 render={<Link href={item.href} />}
               >
                 <item.icon />

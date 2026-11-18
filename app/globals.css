@@ -55,13 +55,13 @@
   --cat-6: oklch(0.52 0.14 35);
   --cat-7: oklch(0.88 0.05 80);
   --cat-8: oklch(0.55 0.05 55);
-  --sidebar: var(--sand);
+  --sidebar: oklch(0.925 0.06 58);
   --sidebar-foreground: var(--brown);
   --sidebar-primary: var(--orange);
   --sidebar-primary-foreground: oklch(0.99 0.006 80);
-  --sidebar-accent: oklch(0.92 0.05 55);
+  --sidebar-accent: oklch(0.88 0.08 55);
   --sidebar-accent-foreground: var(--espresso);
-  --sidebar-border: oklch(0.87 0.045 65);
+  --sidebar-border: oklch(0.84 0.08 55);
   --sidebar-ring: var(--orange);
 }
 
