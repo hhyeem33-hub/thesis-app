@@ -69,7 +69,7 @@ async function ProjectsContent() {
           </span>
         </p>
       )}
-      <ProjectsTable projects={rows} />
+      <ProjectsTable projects={rows} online={ONLINE} />
       <AiWritingGuide projectName={projects[0]?.name ?? "프로젝트 이름"} />
     </div>
   );

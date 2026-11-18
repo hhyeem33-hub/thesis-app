@@ -8,8 +8,8 @@ import { ONLINE } from "@/lib/online";
 //   관리자 비밀번호 바꾸기(/admin-password)는 비밀번호를 잊었을 때 쓰므로 로그인 없이 열린다.
 // ⚠️ 실제 보호는 서버 쪽(lib/db.ts 의 requireUserId)에서도 한 번 더 한다.
 
-const OPEN = ["/welcome", "/auth/callback", "/reset-password"];
-const LOCAL_OPEN = ["/welcome", "/admin-password"];
+const OPEN = ["/welcome", "/auth/callback", "/reset-password", "/share", "/privacy", "/terms"];
+const LOCAL_OPEN = ["/welcome", "/admin-password", "/share", "/privacy", "/terms"];
 
 async function localGate(request: NextRequest) {
   const path = request.nextUrl.pathname;

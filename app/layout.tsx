@@ -3,6 +3,7 @@ import { Noto_Sans_KR, Noto_Serif_KR, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { SiteFooter } from "@/components/site-footer";
 
 const notoSansKr = Noto_Sans_KR({
   variable: "--font-sans",
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full">
         <TooltipProvider delay={300}>
           {children}
+          <SiteFooter />
           <Toaster position="bottom-center" richColors closeButton />
         </TooltipProvider>
       </body>

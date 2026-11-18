@@ -9,6 +9,8 @@ import { DataError } from "@/components/data-error";
 import { GradeBadge } from "@/components/grade-badge";
 import { SettingsSkeleton } from "@/components/page-skeletons";
 import { TranscriptCard } from "@/components/transcript-card";
+import { ShareButton } from "@/components/share-button";
+import { ONLINE } from "@/lib/online";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSource } from "@/lib/sources";
@@ -68,7 +70,10 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
             <span>수정 {dateFormat.format(new Date(source.updatedAt))}</span>
           </div>
         </div>
-        <ClassifyButton sourceId={source.id} again={!!c?.relevance} />
+        <div className="flex flex-wrap gap-2">
+          <ShareButton kind="source" id={source.id} title={source.title} online={ONLINE} />
+          <ClassifyButton sourceId={source.id} again={!!c?.relevance} />
+        </div>
       </div>
 
       {source.type === "youtube" && (

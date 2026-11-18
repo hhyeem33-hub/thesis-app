@@ -71,6 +71,13 @@
 - 관리자 비밀번호 바꾸기(내 컴퓨터 전용, /admin-password): 메일 없이 `.env.local` 의 SUPABASE_SECRET_KEY 로 OWNER_EMAIL 계정 비밀번호를 바꿈(`app/admin-actions.ts`). 문지기 `lib/local-admin.ts` 의 `isLocalAdmin`(ONLINE·VERCEL_ENV 면 false, Host 가 localhost·127.0.0.1 일 때만) — 화면은 notFound, 서버 함수도 거절.
 - 계정마다 자료 따로: `lib/db.ts` 의 모든 함수가 `user_id` 로 거른다(비밀 키는 RLS를 건너뛰므로). 표·RLS는 `supabase/auth.sql`(SQL Editor에서 Run). 공통 연구 설정·사용자 AI 키는 `user_settings` 표.
 - AI 키(온라인): 버셀 `ANTHROPIC_API_KEY` 는 주인(`OWNER_EMAIL` 환경 변수)만. 다른 사람은 설정에서 자기 키(user_settings.ai_key), 없으면 `lib/rule-classify.ts` 규칙 기반 분류.
+- 작은 저장소 app_state(`lib/app-state.ts`, 온라인 표는 `supabase/app-state.sql` 을 SQL Editor에서 Run, 로컬 data/app-state.json): 키→JSON, 사람마다 따로.
+- 공유(`lib/shares.ts`, `app/share-actions.ts`, `components/share-button.tsx`): 자료·프로젝트를 ‘공유해도 되는 자료’로 표시하면 app_state 의 share:<토큰> → /share/<토큰>(로그인 없이, 제목·출처·서지·AI 요약만; 본문·메모 없음). 공유 끄기 = 키 삭제. 드라이브 공유 폴더로 보내기(내 컴퓨터 전용): <내 드라이브>/논문작업실/공유/<이름>.md (새 파일만, _2 붙임).
+- 칸반: `components/kanban-board.tsx`(공용, 끌어 옮기기). 자료 관리 /sources?view=kanban(`sources-kanban.tsx`, decideSource 로 미정·채택·보류·제외). 대시보드 논문 진행 칸반(`progress-kanban.tsx`, `lib/progress.ts` app_state ‘progress’, 자료 모으기→초안→수정→출력; 저장 없으면 원고 있으면 초안).
+- 첫 화면(/welcome): `welcome-slides.tsx` 슬라이드 5장(4.5초 자동, 점 버튼) + 작은 로그인 칸 + 오른쪽 위 `google-login-button.tsx`(온라인·구글 켜져 있을 때만, 둘러보기 중 앱 화면 머리에도). 로그인 때는 이메일·프로필만, 드라이브 권한은 드라이브 버튼에서 따로.
+- 푸터 `site-footer.tsx`(루트 레이아웃, 이메일 없음) + /privacy · /terms(`legal-page.tsx`). proxy 에서 /share·/privacy·/terms 는 로그인 없이 열림.
+- 색: 크림(ivory) 바탕 · 선명한 주황(--orange = primary) · 따뜻한 골드(--gold) · 짙은 웜 브라운 글씨. 다른 브랜드 이름·로고는 쓰지 않는다.
+- Next.js 16.4.6 (16.4.2 는 보안 취약점으로 빌드가 막힘).
 - 화면 구조: 사이드바 있는 화면은 `app/(main)/` (주소는 그대로), `/welcome` 은 사이드바 없음. 사이드바 아래 `components/sidebar-account.tsx`(이메일·연결 상태·로그아웃).
 - 이 Next.js는 `cacheComponents`가 켜져 있다: `export const dynamic` 사용 불가. 파일을 읽는 화면은 `<Suspense>` 안의 컴포넌트에서 `await connection()` 후 읽는다.
 

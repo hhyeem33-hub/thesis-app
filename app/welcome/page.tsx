@@ -14,8 +14,10 @@ import {
   Target,
   UserCheck,
 } from "lucide-react";
+import { GoogleLoginButton } from "@/components/google-login-button";
 import { LoginPanel } from "@/components/login-panel";
-import { Logo, LogoMark } from "@/components/logo";
+import { WelcomeSlides } from "@/components/welcome-slides";
+import { Logo } from "@/components/logo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 // 로그인 전 둘러보기 화면 (온라인). 사이드바 없이 이 화면만 보인다.
@@ -58,29 +60,23 @@ export default function WelcomePage() {
   return (
     <main className="min-h-screen bg-background px-4 py-8 md:px-10 md:py-12">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-14">
-        <section className="relative overflow-hidden rounded-2xl bg-sand px-6 py-10 shadow-md md:px-14 md:py-16">
-          <LogoMark className="pointer-events-none absolute -right-10 -bottom-12 size-80 text-foreground opacity-[0.06]" />
-          <div className="pointer-events-none absolute inset-3 rounded-xl border border-gold/40" />
-          <div className="relative grid items-center gap-10 md:grid-cols-[1.3fr_1fr]">
-            <div className="flex flex-col items-start gap-6">
-              <Logo size="lg" />
-              <h1 className="font-serif text-3xl leading-snug font-bold tracking-tight md:text-4xl">
-                자료 수집부터 논문 원고까지,
-                <br />한 흐름으로
-              </h1>
-              <p className="max-w-xl text-lg leading-relaxed text-foreground/75">
-                연구 설정을 기준으로 자료를 모으고 AI와 함께 판단한 뒤, 각주·참고문헌을 갖춘 외대 양식 원고로 이어 가는
-                학위논문 작업 공간이에요.
-              </p>
-              <a href="#flow" className="inline-flex items-center gap-1 text-sm font-medium text-primary underline-offset-4 hover:underline">
-                어떻게 동작하는지 보기 <ArrowRight className="size-4" />
-              </a>
-            </div>
+        {/* 맨 위: 로고 + 오른쪽 위 작은 구글 로그인 */}
+        <header className="flex items-center justify-between gap-4">
+          <Logo />
+          <GoogleLoginButton />
+        </header>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <WelcomeSlides />
+          <div className="flex flex-col gap-3">
             <Suspense fallback={<div className="h-72 rounded-xl bg-card/70" />}>
               <LoginPanel />
             </Suspense>
+            <a href="#flow" className="inline-flex items-center gap-1 self-center text-sm font-medium text-primary underline-offset-4 hover:underline">
+              어떻게 동작하는지 보기 <ArrowRight className="size-4" />
+            </a>
           </div>
-        </section>
+        </div>
 
         <section id="flow" className="flex scroll-mt-8 flex-col gap-6">
           <SectionTitle eyebrow="FLOW" title="동작 흐름" />

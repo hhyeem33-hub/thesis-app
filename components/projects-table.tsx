@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { openFolder, retryFolder } from "@/app/actions";
 import { Hint } from "@/components/hint";
+import { ShareButton } from "@/components/share-button";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Table,
@@ -32,7 +33,7 @@ const dateFormat = new Intl.DateTimeFormat("ko-KR", {
 
 const OVERVIEW_NOTE = "00_프로젝트 개요.md";
 
-export function ProjectsTable({ projects }: { projects: ProjectRow[] }) {
+export function ProjectsTable({ projects, online = false }: { projects: ProjectRow[]; online?: boolean }) {
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed p-12 text-center text-muted-foreground">
@@ -80,7 +81,10 @@ export function ProjectsTable({ projects }: { projects: ProjectRow[] }) {
                 <AiDocsCell project={p} />
               </TableCell>
               <TableCell className="pr-4">
-                <Shortcuts project={p} />
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Shortcuts project={p} />
+                  <ShareButton kind="project" id={p.id} title={p.name} online={online} size="xs" />
+                </div>
               </TableCell>
             </TableRow>
           ))}

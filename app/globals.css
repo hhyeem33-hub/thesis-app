@@ -4,62 +4,63 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 주제 색: 짙은 브라운(brown, 글씨) · 카멜 골드(gold, 강조) · 크림 아이보리(ivory, 배경) · 샌드(sand, 사이드바·홈 큰 카드)
-   그 밖의 색은 성공(success, 초록)·실패(destructive, 빨강) 표시에만 쓴다. */
+/* 주제 색 (밝고 고급스러운 세 가지): 크림(ivory, 바탕) · 선명한 주황(orange, 포인트·버튼) · 따뜻한 골드(gold, 강조·장식)
+   글씨는 짙은 웜 브라운(brown)으로 읽기 쉽게. 샌드(sand)는 사이드바. 그 밖의 색은 성공(초록)·실패(빨강) 표시에만. */
 :root {
-  --brown: oklch(0.31 0.035 55);
-  --gold: oklch(0.63 0.08 68);
-  --ivory: oklch(0.975 0.014 85);
-  --sand: oklch(0.925 0.028 78);
+  --brown: oklch(0.27 0.03 50);
+  --orange: oklch(0.645 0.2 44);
+  --gold: oklch(0.76 0.15 78);
+  --ivory: oklch(0.985 0.013 85);
+  --sand: oklch(0.955 0.03 82);
 
   --background: var(--ivory);
   --foreground: var(--brown);
-  --card: oklch(0.992 0.007 85);
+  --card: oklch(0.997 0.005 85);
   --card-foreground: var(--brown);
-  --popover: oklch(0.992 0.007 85);
+  --popover: oklch(0.997 0.005 85);
   --popover-foreground: var(--brown);
-  --primary: oklch(0.52 0.075 60);
-  --primary-foreground: oklch(0.985 0.01 85);
-  --secondary: oklch(0.94 0.024 78);
+  --primary: var(--orange);
+  --primary-foreground: oklch(0.99 0.008 85);
+  --secondary: oklch(0.955 0.04 82);
   --secondary-foreground: var(--brown);
-  --muted: oklch(0.945 0.02 80);
-  --muted-foreground: oklch(0.5 0.035 60);
-  --accent: oklch(0.94 0.024 78);
+  --muted: oklch(0.96 0.022 82);
+  --muted-foreground: oklch(0.47 0.035 55);
+  --accent: oklch(0.95 0.06 85);
   --accent-foreground: var(--brown);
-  --destructive: oklch(0.55 0.19 27);
-  --success: oklch(0.52 0.11 155);
-  --border: oklch(0.88 0.028 75);
-  --input: oklch(0.85 0.032 75);
-  --ring: var(--gold);
-  --chart-1: var(--brown);
+  --destructive: oklch(0.55 0.2 27);
+  --success: oklch(0.52 0.12 155);
+  --border: oklch(0.9 0.035 78);
+  --input: oklch(0.86 0.045 72);
+  --ring: var(--orange);
+  --chart-1: var(--orange);
   --chart-2: var(--gold);
-  --chart-3: oklch(0.52 0.075 60);
-  --chart-4: oklch(0.8 0.05 75);
-  --chart-5: oklch(0.6 0.04 60);
-  --radius: 0.625rem;
-  /* 관련도 등급 색: 5 가장 진함 → 1 가장 연함 (베이지·브라운 한 계열) */
-  --grade-5: oklch(0.36 0.05 52);
-  --grade-4: oklch(0.5 0.08 58);
-  --grade-3: oklch(0.64 0.085 68);
-  --grade-2: oklch(0.78 0.06 74);
-  --grade-1: oklch(0.89 0.03 78);
-  /* 여러 항목을 나눌 때 쓰는 베이지 계열 색 (도넛·비율 막대) */
-  --cat-1: oklch(0.42 0.06 52);
-  --cat-2: oklch(0.63 0.085 68);
-  --cat-3: oklch(0.56 0.07 35);
-  --cat-4: oklch(0.6 0.05 110);
-  --cat-5: oklch(0.74 0.06 78);
-  --cat-6: oklch(0.5 0.04 80);
-  --cat-7: oklch(0.82 0.04 60);
-  --cat-8: oklch(0.68 0.03 40);
+  --chart-3: oklch(0.45 0.07 50);
+  --chart-4: oklch(0.86 0.09 85);
+  --chart-5: oklch(0.7 0.12 55);
+  --radius: 0.75rem;
+  /* 관련도 등급 색: 5 가장 진한 주황 → 1 연한 크림 골드 */
+  --grade-5: oklch(0.55 0.19 38);
+  --grade-4: oklch(0.65 0.18 48);
+  --grade-3: oklch(0.75 0.15 70);
+  --grade-2: oklch(0.85 0.1 82);
+  --grade-1: oklch(0.92 0.05 85);
+  /* 여러 항목을 나눌 때 쓰는 색 (주황·골드·베이지·브라운 계열) */
+  --cat-1: oklch(0.645 0.2 44);
+  --cat-2: oklch(0.76 0.15 78);
+  --cat-3: oklch(0.45 0.07 50);
+  --cat-4: oklch(0.7 0.13 60);
+  --cat-5: oklch(0.86 0.09 85);
+  --cat-6: oklch(0.55 0.12 30);
+  --cat-7: oklch(0.8 0.06 70);
+  --cat-8: oklch(0.62 0.05 60);
   --sidebar: var(--sand);
   --sidebar-foreground: var(--brown);
-  --sidebar-primary: var(--gold);
-  --sidebar-primary-foreground: oklch(0.985 0.01 85);
-  --sidebar-accent: oklch(0.885 0.038 75);
-  --sidebar-accent-foreground: oklch(0.27 0.035 55);
-  --sidebar-border: oklch(0.86 0.032 75);
-  --sidebar-ring: var(--gold);
+  --sidebar-primary: var(--orange);
+  --sidebar-primary-foreground: oklch(0.99 0.008 85);
+  --sidebar-accent: oklch(0.93 0.07 82);
+  --sidebar-accent-foreground: oklch(0.25 0.035 50);
+  --sidebar-border: oklch(0.9 0.04 80);
+  --sidebar-ring: var(--orange);
 }
 
 @theme inline {
@@ -72,6 +73,7 @@
   --color-brown: var(--brown);
   --color-sand: var(--sand);
   --color-gold: var(--gold);
+  --color-orange: var(--orange);
   --color-ivory: var(--ivory);
   --color-success: var(--success);
   --color-sidebar-ring: var(--sidebar-ring);

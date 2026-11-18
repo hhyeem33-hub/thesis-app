@@ -11,8 +11,11 @@ import { PageHeader } from "@/components/page-header";
 import { ProjectsSkeleton } from "@/components/page-skeletons";
 import { ResearchFirstBanner } from "@/components/research-first-banner";
 import { getProjects } from "@/lib/store";
+import { ProgressKanban, type ProgressCard } from "@/components/progress-kanban";
+import { getDoc } from "@/lib/documents";
+import { getStages } from "@/lib/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatReference, NEED } from "@/lib/bib";
+import { countChars, formatReference, NEED } from "@/lib/bib";
 import { countAiOutputs, getResearch, getSources } from "@/lib/sources";
 import { PARA, PARA_LABEL, SOURCE_TYPES, SOURCE_TYPE_LABEL } from "@/lib/types";
 
@@ -90,6 +93,19 @@ async function DashboardContent() {
     return <DataError error={e} />;
   }
   const [sources, research, aiCount, projects] = data;
+
+  // 논문 진행 칸반: 저장한 단계가 없으면 원고가 있으면 ‘초안’, 없으면 ‘자료 모으기’
+  const [stages, docs] = await Promise.all([getStages(), Promise.all(projects.map((p) => getDoc(p.id).catch(() => null)))]);
+  const progress: ProgressCard[] = projects.map((p, i) => {
+    const body = docs[i]?.body ?? "";
+    return {
+      id: p.id,
+      name: p.name,
+      stage: stages[p.id] ?? (body.trim() ? "draft" : "collect"),
+      sources: sources.filter((s) => s.projectId === p.id).length,
+      chars: countChars(body),
+    };
+  });
 
   // 구글 드라이브에서 가져온 자료: 메인 폴더(= 연결된 프로젝트) / 하위 폴더(= 분류) 별 수
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
@@ -183,6 +199,16 @@ async function DashboardContent() {
           href="/sources"
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>논문 진행 칸반</CardTitle>
+          <CardDescription>프로젝트 카드를 끌어 단계를 옮겨요 · 자료 모으기 → 초안 → 수정 → 출력</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {progress.length ? <ProgressKanban projects={progress} /> : <p className="text-sm text-muted-foreground">프로젝트를 만들면 여기에 카드가 생겨요.</p>}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="채택" icon={CircleCheck} tone="success" value={adopted} unit="개" note="연구자가 확정한 자료" href="/sources" />
