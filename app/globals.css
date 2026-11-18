@@ -55,13 +55,13 @@
   --cat-6: oklch(0.52 0.14 35);
   --cat-7: oklch(0.88 0.05 80);
   --cat-8: oklch(0.55 0.05 55);
-  --sidebar: oklch(0.925 0.06 58);
-  --sidebar-foreground: var(--brown);
+  --sidebar: oklch(0.66 0.125 52);
+  --sidebar-foreground: var(--ivory);
   --sidebar-primary: var(--orange);
   --sidebar-primary-foreground: oklch(0.99 0.006 80);
-  --sidebar-accent: oklch(0.88 0.08 55);
-  --sidebar-accent-foreground: var(--espresso);
-  --sidebar-border: oklch(0.84 0.08 55);
+  --sidebar-accent: oklch(0.6 0.12 50);
+  --sidebar-accent-foreground: var(--ivory);
+  --sidebar-border: oklch(0.76 0.1 58);
   --sidebar-ring: var(--orange);
 }
 
@@ -263,4 +263,13 @@ a:hover > [data-slot="card"],
   [data-slot="button"]:not(:disabled):hover {
     transform: none;
   }
+}
+
+/* 주황 사이드바 안: 글씨는 아이보리, 흐린 글씨·포인트도 밝게 (흰 바탕 화면에는 영향 없음) */
+[data-slot="sidebar-inner"] {
+  --foreground: var(--ivory);
+  --muted-foreground: oklch(0.97 0.03 75 / 0.82);
+  --primary: var(--ivory);
+  --gold: oklch(0.95 0.07 92);
+  --success: oklch(0.95 0.1 130);
 }
