@@ -16,7 +16,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 /**
  * 첫 화면 슬라이드 5장: 4.5초마다 자동으로 넘어가고, 양옆 화살표·아래 점(•)·키보드 ←→ 로 직접 넘길 수 있다.
- * 색감: 짙은 에스프레소 바탕 + 주황 상자 + 골드 선 + 캐러멜 빛
+ * 색감: 밝은 아이보리 바탕 + 캐러멜·골드 빛 + 선명한 주황 상자, 블랙은 글씨·작은 포인트만
  */
 export function WelcomeSlides() {
   const [i, setI] = useState(0);
@@ -29,7 +29,7 @@ export function WelcomeSlides() {
   }, [i, paused]);
 
   const arrow =
-    "flex size-9 items-center justify-center rounded-full border border-gold/50 bg-espresso/60 text-ivory backdrop-blur transition-colors hover:bg-gold hover:text-espresso focus-visible:outline-2 focus-visible:outline-gold";
+    "flex size-8 items-center justify-center rounded-full border border-caramel/50 bg-ivory/80 text-espresso transition-colors hover:border-espresso hover:bg-espresso hover:text-ivory focus-visible:outline-2 focus-visible:outline-orange";
 
   return (
     <section
@@ -42,12 +42,13 @@ export function WelcomeSlides() {
       }}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="relative grid min-h-[22rem] overflow-hidden rounded-3xl bg-espresso text-ivory shadow-xl outline-none md:min-h-[26rem] md:grid-cols-[minmax(0,1fr)_17rem]"
+      className="relative mx-auto grid min-h-[16rem] w-full max-w-5xl overflow-hidden rounded-2xl border border-gold/40 bg-linear-to-br from-ivory via-ivory to-sand text-espresso shadow-lg shadow-caramel/15 outline-none md:min-h-[18rem] md:grid-cols-[minmax(0,1fr)_13rem]"
     >
-      {/* 캐러멜 조명 번짐 */}
-      <span aria-hidden className="pointer-events-none absolute -top-32 -left-24 size-96 rounded-full bg-caramel/35 blur-3xl" />
+      {/* 캐러멜·골드 빛 번짐 */}
+      <span aria-hidden className="pointer-events-none absolute -top-24 -left-16 size-72 rounded-full bg-gold/25 blur-3xl" />
+      <span aria-hidden className="pointer-events-none absolute -bottom-28 left-1/3 size-72 rounded-full bg-caramel/20 blur-3xl" />
 
-      <div className="relative flex flex-col justify-between gap-8 p-8 md:p-12">
+      <div className="relative flex flex-col justify-between gap-6 p-7 md:p-10">
         <div className="relative grid">
           {SLIDES.map((s, n) => (
             <div
@@ -57,15 +58,15 @@ export function WelcomeSlides() {
               aria-label={`${n + 1} / ${SLIDES.length}`}
               aria-hidden={n !== i}
               className={cn(
-                "col-start-1 row-start-1 flex flex-col gap-5 transition-all duration-700 motion-reduce:transition-none",
+                "col-start-1 row-start-1 flex flex-col gap-4 transition-all duration-700 motion-reduce:transition-none",
                 n === i ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-3 opacity-0"
               )}
             >
-              <span className="flex size-12 items-center justify-center rounded-2xl bg-orange text-ivory shadow-lg shadow-black/30">
-                <s.icon className="size-6" />
+              <span className="flex size-10 items-center justify-center rounded-xl bg-orange text-ivory shadow-md shadow-orange/30">
+                <s.icon className="size-5" />
               </span>
-              <span className="h-px w-16 bg-gold" aria-hidden />
-              <h2 className="max-w-xl font-heading text-2xl leading-snug font-bold tracking-tight text-balance md:text-4xl">{s.text}</h2>
+              <span className="h-0.5 w-12 rounded-full bg-gold" aria-hidden />
+              <h2 className="max-w-xl font-heading text-xl leading-snug font-bold tracking-tight text-balance md:text-3xl">{s.text}</h2>
             </div>
           ))}
         </div>
@@ -83,7 +84,7 @@ export function WelcomeSlides() {
                 aria-selected={n === i}
                 aria-label={`${n + 1}번 슬라이드`}
                 onClick={() => setI(n)}
-                className={cn("h-2 rounded-full transition-all", n === i ? "w-8 bg-orange" : "w-2 bg-ivory/35 hover:bg-ivory/60")}
+                className={cn("h-2 rounded-full transition-all", n === i ? "w-7 bg-orange" : "w-2 bg-caramel/35 hover:bg-caramel/70")}
               />
             ))}
           </div>
@@ -93,14 +94,14 @@ export function WelcomeSlides() {
         </div>
       </div>
 
-      {/* 오른쪽: 주황 상자 (큰 번호 + 골드 선) */}
-      <div className="relative hidden flex-col justify-between bg-orange p-8 text-espresso md:flex">
-        <span className="h-px w-full bg-espresso/25" aria-hidden />
-        <div className="flex flex-col items-center gap-2">
-          <span className="font-heading text-7xl font-bold tabular-nums">{pad(i + 1)}</span>
-          <span className="text-xs font-semibold tracking-[0.4em]">/ {pad(SLIDES.length)}</span>
+      {/* 오른쪽: 선명한 주황 상자 (아이보리 번호 + 골드 선 + 작은 블랙 띠) */}
+      <div className="relative hidden flex-col justify-between bg-linear-to-b from-orange to-caramel p-6 text-ivory md:flex">
+        <span className="h-px w-full bg-gold" aria-hidden />
+        <div className="flex flex-col items-center gap-1">
+          <span className="font-heading text-6xl font-bold tabular-nums drop-shadow-sm">{pad(i + 1)}</span>
+          <span className="text-xs font-semibold tracking-[0.4em] text-ivory/85">/ {pad(SLIDES.length)}</span>
         </div>
-        <p className="text-center text-[11px] font-semibold tracking-[0.35em]">논문작업실</p>
+        <p className="self-center rounded-full bg-espresso px-3 py-1 text-[10px] font-semibold tracking-[0.3em] text-gold">논문작업실</p>
       </div>
     </section>
   );

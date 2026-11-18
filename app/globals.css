@@ -9,8 +9,8 @@
 :root {
   --brown: oklch(0.2 0.012 50);
   --espresso: oklch(0.16 0.006 50);
-  --orange: oklch(0.655 0.175 45);
-  --caramel: oklch(0.6 0.1 60);
+  --orange: oklch(0.7 0.19 47);
+  --caramel: oklch(0.68 0.11 62);
   --gold: oklch(0.77 0.1 85);
   --ivory: oklch(0.985 0.012 85);
   --sand: oklch(0.95 0.03 75);
