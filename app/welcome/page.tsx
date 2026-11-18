@@ -15,7 +15,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { GoogleLoginButton } from "@/components/google-login-button";
-import { LoginPanel } from "@/components/login-panel";
+import { LoginMenu } from "@/components/login-menu";
 import { WelcomeSlides } from "@/components/welcome-slides";
 import { Logo } from "@/components/logo";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,24 +58,26 @@ function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
 
 export default function WelcomePage() {
   return (
-    <main className="min-h-screen bg-background px-4 py-8 md:px-10 md:py-12">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-14">
-        {/* 맨 위: 로고 + 오른쪽 위 작은 구글 로그인 */}
-        <header className="flex items-center justify-between gap-4">
+    <main className="min-h-screen bg-background">
+      {/* 맨 위 띠: 에스프레소 바탕 + 오른쪽 위 작은 로그인 */}
+      <header className="bg-espresso text-ivory">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-10">
           <Logo />
-          <GoogleLoginButton />
-        </header>
-
-        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <WelcomeSlides />
-          <div className="flex flex-col gap-3">
-            <Suspense fallback={<div className="h-72 rounded-xl bg-card/70" />}>
-              <LoginPanel />
+          <div className="flex items-center gap-2">
+            <GoogleLoginButton />
+            <Suspense fallback={null}>
+              <LoginMenu />
             </Suspense>
-            <a href="#flow" className="inline-flex items-center gap-1 self-center text-sm font-medium text-primary underline-offset-4 hover:underline">
-              어떻게 동작하는지 보기 <ArrowRight className="size-4" />
-            </a>
           </div>
+        </div>
+      </header>
+
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-4 py-8 md:px-10 md:py-12">
+        <div className="flex flex-col gap-3">
+          <WelcomeSlides />
+          <a href="#flow" className="inline-flex items-center gap-1 self-end text-sm font-medium text-primary underline-offset-4 hover:underline">
+            어떻게 동작하는지 보기 <ArrowRight className="size-4" />
+          </a>
         </div>
 
         <section id="flow" className="flex scroll-mt-8 flex-col gap-6">
