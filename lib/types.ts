@@ -172,6 +172,8 @@ export type Bib = {
   category: string;
   /** 자료 유형 (학위논문·학술지논문·단행본·보고서·통계·신문기사·웹자료·영상자료). 비면 제목·주소로 짐작 (lib/material-type.ts) */
   materialType?: MaterialType | "";
+  /** 원문 PDF (내 컴퓨터 전용): <내 드라이브>/논문작업실 기준 상대 경로. `npm run drive:reorganize -- --apply --lists` 가 폴더의 PDF 를 찾아 채움 */
+  originalPdf?: string;
 };
 
 export type Footnote = {

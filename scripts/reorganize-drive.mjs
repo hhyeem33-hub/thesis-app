@@ -263,7 +263,12 @@ async function makeXlsx(sheetName, headers, rows, widths) {
       (r, ri) =>
         `<row r="${ri + 1}">${r
           .map((v, ci) =>
-            typeof v === "number"
+            // { link } = 누르면 열리는 주소 (엑셀 HYPERLINK 는 255자까지)
+            v && typeof v === "object" && v.link && v.link.length <= 255
+              ? `<c r="${colName(ci)}${ri + 1}" t="str" s="3"><f>${xmlEsc(`HYPERLINK("${v.link.replace(/"/g, '""')}","${v.link.replace(/"/g, '""')}")`)}</f><v>${xmlEsc(v.link)}</v></c>`
+              : v && typeof v === "object" && v.link
+              ? `<c r="${colName(ci)}${ri + 1}" t="inlineStr" s="2"><is><t xml:space="preserve">${xmlEsc(v.link)}</t></is></c>`
+              : typeof v === "number"
               ? `<c r="${colName(ci)}${ri + 1}" s="${ri ? 2 : 1}"><v>${v}</v></c>`
               : `<c r="${colName(ci)}${ri + 1}" t="inlineStr" s="${ri ? 2 : 1}"><is><t xml:space="preserve">${xmlEsc(v)}</t></is></c>`
           )
@@ -290,7 +295,7 @@ async function makeXlsx(sheetName, headers, rows, widths) {
   );
   zip.file(
     "xl/styles.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="${FONT}"/></font><font><b/><sz val="10"/><name val="${FONT}"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF5EDE3"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border/><border><left style="thin"><color rgb="FFC9B8A6"/></left><right style="thin"><color rgb="FFC9B8A6"/></right><top style="thin"><color rgb="FFC9B8A6"/></top><bottom style="thin"><color rgb="FFC9B8A6"/></bottom></border></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="3"><xf/><xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/><xf fontId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs></styleSheet>`
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="10"/><name val="${FONT}"/></font><font><b/><sz val="10"/><name val="${FONT}"/></font><font><u/><sz val="10"/><color rgb="FF1F5FBF"/><name val="${FONT}"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF5EDE3"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border/><border><left style="thin"><color rgb="FFC9B8A6"/></left><right style="thin"><color rgb="FFC9B8A6"/></right><top style="thin"><color rgb="FFC9B8A6"/></top><bottom style="thin"><color rgb="FFC9B8A6"/></bottom></border></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="4"><xf/><xf fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/><xf fontId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf fontId="2" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs></styleSheet>`
   );
   zip.file(
     "xl/worksheets/sheet1.xml",
@@ -350,11 +355,47 @@ const safeMove = (from, toDir, isDir = false) => {
   return to;
 };
 
+// 자료 카드 파일: .docx 를 PDF 로 바꿨으면(같은 이름 .pdf 가 있으면) .pdf 를 쓴다
+const cardBase = (it) => it.fileName.replace(/\.docx$/i, "");
+const cardName = (it) => (existsSync(path.join(base, it.folder, `${cardBase(it)}.pdf`)) ? `${cardBase(it)}.pdf` : it.fileName);
+// 원문 PDF 이름 규칙: "<자료 카드 이름>_원문.pdf" (원문_다운로드_목록.xlsx 의 ‘저장할 파일 이름’)
+const ORIGINAL_SUFFIX = "_원문.pdf";
+const norm = (t) => String(t ?? "").normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+// 자료마다 같은 폴더의 원문 PDF 찾기 (자료 카드 PDF 는 빼고, PDF 하나는 자료 하나에만):
+//   ① 정해 둔 원본(PDF_OF) ② "<카드 이름>_원문.pdf" ③ 파일 이름에 KCI 번호(ART…) ④ 파일 이름에 제목 앞 14자(하나만 맞을 때)
+const originals = new Map();
+{
+  const byFolder = new Map();
+  for (const it of items) byFolder.set(it.folder, [...(byFolder.get(it.folder) ?? []), it]);
+  for (const [folder, list] of byFolder) {
+    const cards = new Set(list.flatMap((it) => [it.fileName, `${cardBase(it)}.pdf`]));
+    const pdfs = listFiles(path.join(base, folder)).filter((n) => /\.pdf$/i.test(n) && !cards.has(n));
+    const taken = new Set();
+    const take = (it, n) => {
+      if (!n || taken.has(n)) return;
+      taken.add(n);
+      originals.set(it, n);
+    };
+    for (const it of list) if (pdfs.includes(PDF_OF[it.key])) take(it, PDF_OF[it.key]);
+    for (const it of list) if (!originals.has(it)) take(it, pdfs.find((n) => n === `${cardBase(it)}${ORIGINAL_SUFFIX}`));
+    for (const it of list)
+      if (!originals.has(it) && it.bib.kciId) take(it, pdfs.find((n) => !taken.has(n) && n.toUpperCase().includes(it.bib.kciId.toUpperCase())));
+    for (const it of list) {
+      if (originals.has(it)) continue;
+      const key = norm(it.title).slice(0, 14);
+      if (key.length < 6) continue;
+      const hits = pdfs.filter((n) => !taken.has(n) && norm(n.replace(/\.pdf$/i, "")).includes(key));
+      if (hits.length === 1) take(it, hits[0]);
+    }
+  }
+}
+const originalOf = (it) => originals.get(it) ?? "";
+
 // --lists: 파일은 그대로 두고 폴더마다 00_목록.xlsx 만 지금 상태로 다시 만든다.
 //          예전 목록은 지우지 않고 '_정리 전 보관/예전 00_목록 (날짜)/<폴더>' 로 옮긴다.
 if (LISTS) {
-  const missing = items.filter((it) => !existsSync(path.join(base, it.folder, it.fileName)));
-  for (const it of missing) console.log(`  ! 폴더에 .docx 가 없어요: ${it.folder}/${it.fileName}`);
+  const missing = items.filter((it) => !existsSync(path.join(base, it.folder, cardName(it))));
+  for (const it of missing) console.log(`  ! 폴더에 자료 카드가 없어요: ${it.folder}/${cardName(it)}`);
   const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/:/g, "").replace(" ", "_").slice(0, 15);
   const old = path.join(ARCHIVE, `예전 00_목록 (${stamp})`);
   for (const f of LIST_FOLDERS) {
@@ -362,6 +403,61 @@ if (LISTS) {
     if (to) console.log(`예전 목록 보관: ${f}/00_목록.xlsx → ${rel(to)}`);
   }
   await writeAllLists();
+
+  // 앱 기록(data/sources.json)에 원문 PDF 연결 (먼저 한 번 백업). 경로는 논문작업실 기준
+  const srcFile = path.join(ROOT, "data", "sources.json");
+  const backup = path.join(ROOT, "data", "sources.before-original-pdf.json");
+  if (!existsSync(backup)) copyFileSync(srcFile, backup, constants.COPYFILE_EXCL);
+  const pdfById = new Map(
+    items.filter(originalOf).map((it) => [it.s.id, path.relative(WORKROOM, path.join(base, it.folder, originalOf(it))).split(path.sep).join("/")])
+  );
+  let linked = 0;
+  let unlinked = 0;
+  const next = readJson(srcFile, []).map((s) => {
+    const want = pdfById.get(s.id);
+    if (want) {
+      if (s.bib?.originalPdf !== want) linked++;
+      return { ...s, bib: { ...(s.bib ?? {}), originalPdf: want } };
+    }
+    // 파일을 다른 데로 옮겼거나 이름을 바꿔 더는 못 찾으면 연결만 푼다 (파일은 건드리지 않음)
+    if (s.bib?.originalPdf && !existsSync(path.join(WORKROOM, s.bib.originalPdf))) {
+      unlinked++;
+      const { originalPdf: _gone, ...bib } = s.bib;
+      return { ...s, bib };
+    }
+    return s;
+  });
+  writeFileSync(srcFile, JSON.stringify(next, null, 2), "utf8");
+  console.log(`앱에 원문 PDF 연결: 새로 ${linked}개 · 연결 해제 ${unlinked}개 · 지금 연결된 자료 ${pdfById.size}개 (백업: data/sources.before-original-pdf.json)`);
+
+  // --download-list: 원문을 직접 받을 논문 목록 (채택했거나 관련도 4~5 인 국내 학술지논문·학위논문)
+  if (process.argv.includes("--download-list")) {
+    const KCI_URL = (id) => `https://www.kci.go.kr/kciportal/ci/sereArticleSearch/ciSereArtiView.kci?sereArticleSearchBean.artiId=${id}`;
+    const linkOf = (it) =>
+      it.bib.kciId ? KCI_URL(it.bib.kciId) : /^https?:\/\//.test(it.s.origin) ? it.s.origin : it.bib.doi ? `https://doi.org/${it.bib.doi}` : "";
+    const pick = items
+      .filter((it) => it.s.classification?.decision?.status === "adopted" || (it.s.classification?.relevance ?? 0) >= 4)
+      .filter((it) => it.type === "학위논문" || (it.type === "학술지논문" && it.region === "국내"))
+      .sort((a, b) => a.folder.localeCompare(b.folder, "ko") || (a.who || "힣").localeCompare(b.who || "힣", "ko"));
+    const rows = pick.map((it, i) => [
+      i + 1,
+      it.title,
+      it.who,
+      it.year,
+      it.folder.split(path.sep).join(" / "),
+      linkOf(it) ? { link: linkOf(it) } : "[링크 없음 — 제목으로 검색]",
+      `${cardBase(it)}${ORIGINAL_SUFFIX}`,
+      originalOf(it) ? "있음" : "",
+      it.decision,
+      it.s.classification?.relevance || "",
+    ]);
+    const name = freeName(base, "원문_다운로드_목록.xlsx");
+    writeNew(
+      path.join(base, name),
+      await makeXlsx("원문 다운로드", ["번호", "제목", "저자", "연도", "들어갈 폴더", "링크", "저장할 파일 이름", "원문 있음", "내 결정", "관련도"], rows, [6, 60, 22, 8, 24, 60, 60, 9, 9, 8])
+    );
+    console.log(`원문 다운로드 목록: ${name} (논문 ${rows.length}개, 이미 원문 있음 ${rows.filter((r) => r[7]).length}개)`);
+  }
   process.exit(0);
 }
 
@@ -390,14 +486,14 @@ for (const m of folderMoves) {
 await writeAllLists();
 
 async function writeAllLists() {
-const HEAD = ["번호", "저자", "연도", "제목", "출처(학술지·기관)", "내 결정", "파일 이름"];
-const W = [6, 22, 8, 60, 30, 9, 50];
-const rowsOf = (list) => list.map((it, i) => [i + 1, it.who, it.year, it.title, it.from, it.decision, it.fileName]);
+const HEAD = ["번호", "저자", "연도", "제목", "출처(학술지·기관)", "내 결정", "원문 PDF", "파일 이름"];
+const W = [6, 22, 8, 60, 30, 9, 40, 50];
+const rowsOf = (list) => list.map((it, i) => [i + 1, it.who, it.year, it.title, it.from, it.decision, originalOf(it), cardName(it)]);
 const sortKo = (a, b) => (a.who || "힣").localeCompare(b.who || "힣", "ko") || a.title.localeCompare(b.title, "ko");
 const listWritten = [];
 const writeList = async (folder, list, extraFiles = []) => {
   const rows = rowsOf([...list].sort(sortKo));
-  for (const f of extraFiles) rows.push([rows.length + 1, "", "", f, "옮겨 온 파일", "", f]);
+  for (const f of extraFiles) rows.push([rows.length + 1, "", "", f, "옮겨 온 파일", "", "", f]);
   const file = path.join(base, folder, "00_목록.xlsx");
   const before = written;
   writeNew(file, await makeXlsx(path.basename(folder), HEAD, rows, W));
@@ -406,10 +502,10 @@ const writeList = async (folder, list, extraFiles = []) => {
 for (const f of ALL_FOLDERS) {
   const list = items.filter((x) => x.folder === f);
   // 자료 .docx·원본 PDF 말고 폴더에 실제로 있는 파일(옮겨 온 영상 목록 등)도 목록에 넣는다
-  const mine = new Set(list.map((it) => it.fileName));
+  const mine = new Set(list.flatMap((it) => [it.fileName, cardName(it), originalOf(it)]));
   const extra = listFiles(path.join(base, f)).filter((n) => !mine.has(n) && !Object.values(PDF_OF).includes(n));
   if (f === UNSURE_FOLDER) {
-    const rows = [...list].sort(sortKo).map((it, i) => [i + 1, it.who, it.year, it.title, it.from, it.decision, it.reason, it.s.origin, it.fileName]);
+    const rows = [...list].sort(sortKo).map((it, i) => [i + 1, it.who, it.year, it.title, it.from, it.decision, it.reason, it.s.origin, cardName(it)]);
     const file = path.join(base, f, "00_목록.xlsx");
     writeNew(file, await makeXlsx("분류확인필요", ["번호", "저자", "연도", "제목", "출처", "내 결정", "확인할 점", "링크", "파일 이름"], rows, [6, 18, 8, 50, 22, 9, 45, 40, 45]));
     listWritten.push(f);
@@ -427,8 +523,8 @@ for (const f of ALL_FOLDERS) {
 // 국내·중국을 나눈 상위 폴더(01, 02)에도 합친 목록
 for (const t of ["학위논문", "학술지논문"]) {
   const list = items.filter((x) => x.type === t).sort((a, b) => a.region.localeCompare(b.region, "ko") || sortKo(a, b));
-  const rows = list.map((it, i) => [i + 1, it.region, it.who, it.year, it.title, it.from, it.decision, path.join(it.region, it.fileName)]);
-  writeNew(path.join(base, MATERIAL_FOLDER[t], "00_목록.xlsx"), await makeXlsx(t, ["번호", "구분", "저자", "연도", "제목", "출처(학술지·기관)", "내 결정", "파일"], rows, [6, 8, 22, 8, 60, 30, 9, 55]));
+  const rows = list.map((it, i) => [i + 1, it.region, it.who, it.year, it.title, it.from, it.decision, originalOf(it), path.join(it.region, cardName(it))]);
+  writeNew(path.join(base, MATERIAL_FOLDER[t], "00_목록.xlsx"), await makeXlsx(t, ["번호", "구분", "저자", "연도", "제목", "출처(학술지·기관)", "내 결정", "원문 PDF", "파일"], rows, [6, 8, 22, 8, 60, 30, 9, 40, 55]));
   listWritten.push(MATERIAL_FOLDER[t]);
 }
 console.log(`00_목록.xlsx: ${listWritten.join(", ")}`);

@@ -118,6 +118,9 @@ export async function updateSourceBib(id: string, bib: Bib): Promise<Result> {
     ) as Bib;
     if (!["article", "book", "web"].includes(clean.kind)) clean.kind = "web";
     if (!isMaterialType(clean.materialType)) clean.materialType = "";
+    // 원문 PDF 연결은 정리 스크립트만 바꾼다 (서지 칸 저장으로 지워지거나 바뀌지 않게)
+    if (source.bib?.originalPdf) clean.originalPdf = source.bib.originalPdf;
+    else delete clean.originalPdf;
     await saveSource({ ...source, bib: clean, updatedAt: new Date().toISOString() });
     revalidatePath(`/sources/${id}`);
     revalidatePath("/write");

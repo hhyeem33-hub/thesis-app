@@ -7,7 +7,10 @@ import { aiErrorMessage, classifySource, getAiKeyStatus } from "@/lib/ai";
 import { ONLINE } from "@/lib/online";
 import { ruleClassify } from "@/lib/rule-classify";
 import { getSource, getSources, saveResearch, saveSource } from "@/lib/sources";
-import { getProjects } from "@/lib/store";
+import { getProjects, getSettings } from "@/lib/store";
+import { execFile } from "child_process";
+import { promises as fs } from "fs";
+import path from "path";
 import { researchBasis, saveProjectResearch } from "@/lib/research";
 import {
   DECISIONS,
@@ -293,4 +296,25 @@ export async function saveTranscript(
   } catch (e) {
     return { ok: false, error: aiErrorMessage(e) };
   }
+}
+
+/** 자료에 연결된 원문 PDF 를 기본 PDF 프로그램으로 연다 (내 컴퓨터 전용, 논문작업실 폴더 안의 .pdf 만) */
+export async function openOriginalPdf(id: string): Promise<ActionResult> {
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
+  if (ONLINE) return { ok: false, error: "원문 PDF 는 내 컴퓨터에서만 열 수 있어요." };
+  const rel = (await getSource(id))?.bib?.originalPdf;
+  if (!rel) return { ok: false, error: "연결된 원문 PDF 가 없어요." };
+  const { driveRootPath } = await getSettings();
+  const workroom = path.resolve(driveRootPath, "논문작업실");
+  const file = path.resolve(workroom, rel);
+  if (!file.startsWith(workroom + path.sep) || !/\.pdf$/i.test(file)) return { ok: false, error: "열 수 없는 위치예요." };
+  try {
+    await fs.access(file);
+  } catch {
+    return { ok: false, error: "파일이 그 자리에 없어요. 옮겼다면 정리 스크립트(--lists)를 다시 돌려 주세요." };
+  }
+  // explorer.exe 는 성공해도 종료 코드 1을 돌려줄 때가 있어 오류는 무시한다
+  execFile("explorer.exe", [file], () => {});
+  return { ok: true };
 }

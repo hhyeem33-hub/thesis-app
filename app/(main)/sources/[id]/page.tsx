@@ -9,6 +9,7 @@ import { DataError } from "@/components/data-error";
 import { GradeBadge } from "@/components/grade-badge";
 import { SettingsSkeleton } from "@/components/page-skeletons";
 import { TranscriptCard } from "@/components/transcript-card";
+import { OriginalPdfButton } from "@/components/original-pdf-button";
 import { ShareButton } from "@/components/share-button";
 import { ONLINE } from "@/lib/online";
 import { buttonVariants } from "@/components/ui/button";
@@ -137,6 +138,11 @@ async function SourceDetail({ params }: { params: Promise<{ id: string }> }) {
             </a>
           ) : (
             <p className="break-words">{source.origin}</p>
+          )}
+          {!ONLINE && source.bib?.originalPdf && (
+            <div className="mt-3 border-t pt-3">
+              <OriginalPdfButton sourceId={source.id} file={source.bib.originalPdf} />
+            </div>
           )}
         </CardContent>
       </Card>
