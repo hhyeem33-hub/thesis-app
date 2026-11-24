@@ -404,7 +404,7 @@ if (LISTS) {
   const missing = items.filter((it) => !existsSync(path.join(base, it.folder, cardName(it))));
   for (const it of missing) console.log(`  ! 폴더에 자료 카드가 없어요: ${it.folder}/${cardName(it)}`);
   const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/:/g, "").replace(" ", "_").slice(0, 15);
-  const old = path.join(ARCHIVE, `예전 00_목록 (${stamp})`);
+  const old = path.join(ARCHIVE, "중복 폴더", `예전 00_목록 (${stamp})`);
   // 예전 목록은 보관 폴더에 ‘복사’해 두고 그 자리에 덮어쓴다.
   // (옮긴 뒤 같은 이름으로 새로 만들면 구글 드라이브 동기화가 예전 파일을 되살려 놓는 일이 있었음 — 2026-11-24)
   for (const f of LIST_FOLDERS) {
