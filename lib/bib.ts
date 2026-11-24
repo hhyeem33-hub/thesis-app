@@ -1,5 +1,6 @@
 // 참고문헌·각주·원고 변환 (화면과 서버가 같이 쓰는 순수 함수)
 import type { Manuscript } from "./ai";
+import { parseTable } from "./table";
 import type { Bib, Footnote, Source, ThesisDoc } from "./types";
 
 export const NEED = "[보완 필요]";
@@ -104,8 +105,10 @@ export function buildReferences(
 
 // ── 원고 ↔ hwpx 원고(JSON) ──────────────────────────────────────────────────
 
-type Section = { title: string; blocks: string[]; subsections: { title: string; blocks: string[] }[] };
-type Chapter = { title: string; blocks: string[]; sections: Section[] };
+/** 문단(글) 또는 표 — 표는 make_hwpx.py 가 외대 양식 표 모양으로 그린다 */
+type MsBlock = string | { table: { caption: string; rows: string[][] } };
+type Section = { title: string; blocks: MsBlock[]; subsections: { title: string; blocks: MsBlock[] }[] };
+type Chapter = { title: string; blocks: MsBlock[]; sections: Section[] };
 
 /** 글쓰기 원고 → make_hwpx.py 원고 JSON. 각주는 [^각주 내용] 으로 그 자리에 넣는다 */
 export function docToManuscript(doc: ThesisDoc, references: string[]) {
@@ -117,10 +120,10 @@ export function docToManuscript(doc: ThesisDoc, references: string[]) {
       return `[^${text.replace(/［보완 필요］/g, NEED)}]`;
     });
   const chapters: Chapter[] = [];
-  const lead: string[] = [];
+  const lead: MsBlock[] = [];
   let ch: Chapter | null = null;
   let sec: Section | null = null;
-  let sub: { title: string; blocks: string[] } | null = null;
+  let sub: { title: string; blocks: MsBlock[] } | null = null;
   for (const raw of doc.body.split(/\n\s*\n|\n(?=#{1,3}\s)/)) {
     const para = raw.trim();
     if (!para) continue;
@@ -144,11 +147,16 @@ export function docToManuscript(doc: ThesisDoc, references: string[]) {
       }
       continue;
     }
-    const text = inline(para.replace(/\n/g, " "));
-    if (sub) sub.blocks.push(text);
-    else if (sec) sec.blocks.push(text);
-    else if (ch) ch.blocks.push(text);
-    else lead.push(text);
+    const target = sub ? sub.blocks : sec ? sec.blocks : ch ? ch.blocks : lead;
+    const t = parseTable(para);
+    if (t) {
+      if (t.before) target.push(inline(t.before));
+      // 한글 표 칸에는 각주를 달 수 없어서 칸 안의 각주 표시는 뺀다
+      const cell = (c: string) => c.replace(MARK_RE, "").trim();
+      target.push({ table: { caption: t.caption, rows: t.rows.map((r) => r.map(cell)) } });
+      continue;
+    }
+    target.push(inline(para.replace(/\n/g, " ")));
   }
   if (lead.length) {
     if (chapters[0]) chapters[0].blocks.unshift(...lead);

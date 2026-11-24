@@ -50,6 +50,8 @@ import {
 } from "@/lib/bib";
 import type { AiDraftRecord, Bib, DocVersion, Footnote, Source, ThesisDoc } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { tableCaption } from "@/lib/export-doc";
+import { parseTable } from "@/lib/table";
 
 export type LibrarySource = Pick<Source, "id" | "title" | "origin" | "type"> & { bib?: Bib | null };
 type VersionInfo = Omit<DocVersion, "doc">;
@@ -77,6 +79,7 @@ function Preview({ doc, references }: { doc: Pick<ThesisDoc, "title" | "body" | 
   const fnText = new Map(doc.footnotes.map((f) => [f.id, f.text]));
   const blocks = doc.body.split(/\n\s*\n|\n(?=#{1,3}\s)/).map((b) => b.trim()).filter(Boolean);
   const count = [0, 0, 0];
+  let tableNo = 0;
   const withMarks = (t: string) =>
     t.split(MARK_RE).map((part, i) =>
       i % 2 === 1 ? (
@@ -101,6 +104,41 @@ function Preview({ doc, references }: { doc: Pick<ThesisDoc, "title" | "body" | 
             <p key={i} className={cn("font-heading font-bold", level === 0 ? "mt-4 text-lg" : "mt-2")}>
               {num} {h[2]}
             </p>
+          );
+        }
+        const t = parseTable(b);
+        if (t) {
+          const [head, ...rest] = t.rows;
+          tableNo++;
+          return (
+            <div key={i} className="flex flex-col gap-3">
+              {t.before && <p className="indent-4">{withMarks(t.before)}</p>}
+              <table className="w-full border-collapse font-sans text-sm leading-6">
+                <caption className="mb-1 caption-top text-center font-heading font-bold">
+                  {tableCaption({ no: tableNo, caption: t.caption })}
+                </caption>
+                <thead>
+                  <tr>
+                    {head.map((c, ci) => (
+                      <th key={ci} className="border border-foreground/40 bg-muted px-2 py-1 text-center font-semibold">
+                        {withMarks(c)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rest.map((r, ri) => (
+                    <tr key={ri}>
+                      {r.map((c, ci) => (
+                        <td key={ci} className="border border-foreground/40 px-2 py-1 align-middle">
+                          {withMarks(c)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           );
         }
         return (

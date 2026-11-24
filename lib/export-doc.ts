@@ -1,4 +1,5 @@
 import { footnoteNumbers, MARK_RE, NEED } from "./bib";
+import { parseTable } from "./table";
 import type { Footnote, ThesisDoc } from "./types";
 
 // 글쓰기 원고 → 출력용 구조 (HTML · Markdown · PDF(인쇄) · Word 공용)
@@ -6,10 +7,17 @@ import type { Footnote, ThesisDoc } from "./types";
 
 export type ExportDoc = Pick<ThesisDoc, "title" | "author" | "affiliation" | "body" | "footnotes">;
 
+/** 글자와 각주 번호가 번갈아 나온다 */
+export type Parts = (string | { note: number })[];
+
 export type Block =
   | { kind: "heading"; level: 0 | 1 | 2; num: string; text: string }
-  /** 문단: 글자와 각주 번호가 번갈아 나온다 */
-  | { kind: "para"; parts: (string | { note: number })[] };
+  | { kind: "para"; parts: Parts }
+  /** 표: 첫 행은 머리글, no = <표 N> 번호 */
+  | { kind: "table"; no: number; caption: string; rows: Parts[][] };
+
+/** 표 제목: 외대 양식처럼 "<표 1> 제목" */
+export const tableCaption = (b: { no: number; caption: string }) => `<표 ${b.no}>${b.caption ? ` ${b.caption}` : ""}`;
 
 export type Outline = {
   title: string;
@@ -28,6 +36,20 @@ export function outline(doc: ExportDoc, references: string[]): Outline {
   for (const [id, n] of numbers) notes[n - 1] = fnText.get(id) || NEED;
   const count = [0, 0, 0];
   const blocks: Block[] = [];
+  const toParts = (text: string): Parts => {
+    const parts: Parts = [];
+    text
+      .replace(/\n/g, " ")
+      .split(MARK_RE)
+      .forEach((piece, i) => {
+        if (i % 2 === 1) {
+          const n = numbers.get(piece);
+          if (n) parts.push({ note: n });
+        } else if (piece) parts.push(piece);
+      });
+    return parts;
+  };
+  let tableNo = 0;
   for (const raw of doc.body.split(/\n\s*\n|\n(?=#{1,3}\s)/)) {
     const b = raw.trim();
     if (!b) continue;
@@ -39,16 +61,13 @@ export function outline(doc: ExportDoc, references: string[]): Outline {
       blocks.push({ kind: "heading", level, num: count.slice(0, level + 1).join(".") + (level < 2 ? "." : ""), text: h[2].trim() });
       continue;
     }
-    const parts: (string | { note: number })[] = [];
-    b.replace(/\n/g, " ")
-      .split(MARK_RE)
-      .forEach((piece, i) => {
-        if (i % 2 === 1) {
-          const n = numbers.get(piece);
-          if (n) parts.push({ note: n });
-        } else if (piece) parts.push(piece);
-      });
-    blocks.push({ kind: "para", parts });
+    const t = parseTable(b);
+    if (t) {
+      if (t.before) blocks.push({ kind: "para", parts: toParts(t.before) });
+      blocks.push({ kind: "table", no: ++tableNo, caption: t.caption, rows: t.rows.map((r) => r.map(toParts)) });
+      continue;
+    }
+    blocks.push({ kind: "para", parts: toParts(b) });
   }
   return {
     title: doc.title.trim() || NEED,
@@ -76,15 +95,31 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 /** 한 파일로 열리는 HTML (인쇄·PDF 저장에도 그대로 쓴다) */
 export function toHtml(o: Outline, opts: { print?: boolean } = {}) {
+  // 같은 각주가 여러 번 나오면 되돌아가기 자리(id)는 처음 한 번만
+  const seen = new Set<number>();
+  const html = (parts: Parts) =>
+    parts
+      .map((p) => {
+        if (typeof p === "string") return esc(p);
+        const id = seen.has(p.note) ? "" : ` id="r${p.note}"`;
+        seen.add(p.note);
+        return `<sup><a href="#fn${p.note}"${id}>${p.note}</a></sup>`;
+      })
+      .join("");
   const body = o.blocks
     .map((b) => {
       if (b.kind === "heading") {
         const tag = ["h2", "h3", "h4"][b.level];
         return `<${tag}>${esc(b.num)} ${esc(b.text)}</${tag}>`;
       }
-      return `<p>${b.parts
-        .map((p) => (typeof p === "string" ? esc(p) : `<sup><a href="#fn${p.note}" id="r${p.note}">${p.note}</a></sup>`))
-        .join("")}</p>`;
+      if (b.kind === "table") {
+        const [head, ...rest] = b.rows;
+        const row = (r: Parts[], tag: string) => `<tr>${r.map((c) => `<${tag}>${html(c)}</${tag}>`).join("")}</tr>`;
+        return `<table><caption>${esc(tableCaption(b))}</caption><thead>${row(head, "th")}</thead><tbody>${rest
+          .map((r) => row(r, "td"))
+          .join("")}</tbody></table>`;
+      }
+      return `<p>${html(b.parts)}</p>`;
     })
     .join("\n");
   const notes = o.notes.length
@@ -110,6 +145,12 @@ export function toHtml(o: Outline, opts: { print?: boolean } = {}) {
   h4 { font-size: 10.5pt; margin: 1rem 0 .3rem; }
   p { text-align: justify; text-indent: 1em; margin: 0 0 .5rem; }
   sup a { text-decoration: none; color: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: .8rem 0 1.2rem; font-size: 9.5pt; line-height: 1.5; page-break-inside: avoid; }
+  caption { caption-side: top; text-align: center; font-weight: bold; margin-bottom: .3rem; }
+  th, td { border: 1px solid #555; padding: .3rem .5rem; vertical-align: middle; text-align: left; }
+  th { background: #f0f0f0; text-align: center; }
+  thead { display: table-header-group; }
+  @media print { th { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   .notes, .refs { margin-top: 2rem; border-top: 1px solid #bbb; padding-top: .5rem; }
   .notes ol { font-size: 9pt; padding-left: 1.4rem; }
   .notes a { text-decoration: none; color: #888; }
@@ -127,6 +168,8 @@ ${refs}
 </html>`;
 }
 
+const md = (parts: Parts) => parts.map((p) => (typeof p === "string" ? p : `[^${p.note}]`)).join("");
+
 /** Markdown: 각주는 [^1] 형식, 참고문헌은 목록 */
 export function toMarkdown(o: Outline) {
   const lines = [`# ${o.title}`, ""];
@@ -134,7 +177,14 @@ export function toMarkdown(o: Outline) {
   if (byline) lines.push(`*${byline}*`, "");
   for (const b of o.blocks) {
     if (b.kind === "heading") lines.push(`${"#".repeat(b.level + 2)} ${b.num} ${b.text}`, "");
-    else lines.push(b.parts.map((p) => (typeof p === "string" ? p : `[^${p.note}]`)).join(""), "");
+    else if (b.kind === "table") {
+      lines.push(`**${tableCaption(b)}**`, "");
+      b.rows.forEach((r, i) => {
+        lines.push(`| ${r.map((c) => md(c).replace(/\|/g, "\\|")).join(" | ")} |`);
+        if (i === 0) lines.push(`| ${r.map(() => "---").join(" | ")} |`);
+      });
+      lines.push("");
+    } else lines.push(md(b.parts), "");
   }
   if (o.references.length) {
     lines.push("## 참고문헌", "");
@@ -147,9 +197,56 @@ export function toMarkdown(o: Outline) {
 
 /** Word(.docx): 진짜 각주(쪽 아래)로 넣는다. 브라우저에서 만든다 (온라인에서도 됨) */
 export async function toDocx(o: Outline): Promise<Blob> {
-  const { AlignmentType, Document, FootnoteReferenceRun, HeadingLevel, Packer, Paragraph, TextRun } = await import("docx");
+  const {
+    AlignmentType,
+    BorderStyle,
+    Document,
+    FootnoteReferenceRun,
+    HeadingLevel,
+    Packer,
+    Paragraph,
+    Table,
+    TableCell,
+    TableRow,
+    TextRun,
+    VerticalAlign,
+    WidthType,
+  } = await import("docx");
   const FONT = "함초롬바탕";
-  const children: InstanceType<typeof Paragraph>[] = [
+  // A4(11906) - 좌우 여백 1701×2 = 본문 너비 (twip)
+  const TEXT_WIDTH = 11906 - 1701 * 2;
+  const runs = (parts: Parts, size: number, bold = false) =>
+    parts.map((p) => (typeof p === "string" ? new TextRun({ text: p, size, bold, font: FONT }) : new FootnoteReferenceRun(p.note)));
+  const line = { style: BorderStyle.SINGLE, size: 4, color: "555555" };
+  const table = (b: Extract<Block, { kind: "table" }>) => {
+    const cols = b.rows[0].length;
+    const widths = Array.from({ length: cols }, (_, i) => Math.floor(TEXT_WIDTH / cols) + (i === cols - 1 ? TEXT_WIDTH % cols : 0));
+    return new Table({
+      width: { size: TEXT_WIDTH, type: WidthType.DXA },
+      columnWidths: widths,
+      borders: { top: line, bottom: line, left: line, right: line, insideHorizontal: line, insideVertical: line },
+      rows: b.rows.map(
+        (r, ri) =>
+          new TableRow({
+            tableHeader: ri === 0,
+            cantSplit: true,
+            children: r.map(
+              (c, ci) =>
+                new TableCell({
+                  width: { size: widths[ci], type: WidthType.DXA },
+                  verticalAlign: VerticalAlign.CENTER,
+                  margins: { top: 60, bottom: 60, left: 100, right: 100 },
+                  shading: ri === 0 ? { fill: "F0F0F0" } : undefined,
+                  children: [
+                    new Paragraph({ alignment: ri === 0 ? AlignmentType.CENTER : AlignmentType.LEFT, children: runs(c, 19, ri === 0) }),
+                  ],
+                })
+            ),
+          })
+      ),
+    });
+  };
+  const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: o.title, bold: true, size: 32, font: FONT })] }),
   ];
   const byline = [o.author, o.affiliation].filter(Boolean).join(" · ");
@@ -165,13 +262,24 @@ export async function toDocx(o: Outline): Promise<Blob> {
           children: [new TextRun({ text: `${b.num} ${b.text}`, bold: true, size: headingSize[b.level], font: FONT, color: "000000" })],
         })
       );
+    else if (b.kind === "table")
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          keepNext: true,
+          spacing: { before: 200, after: 80 },
+          children: [new TextRun({ text: tableCaption(b), bold: true, size: 20, font: FONT })],
+        }),
+        table(b),
+        new Paragraph({ spacing: { after: 120 }, children: [] })
+      );
     else
       children.push(
         new Paragraph({
           alignment: AlignmentType.JUSTIFIED,
           indent: { firstLine: 200 },
           spacing: { line: 360, after: 80 },
-          children: b.parts.map((p) => (typeof p === "string" ? new TextRun({ text: p, size: 21, font: FONT }) : new FootnoteReferenceRun(p.note))),
+          children: runs(b.parts, 21),
         })
       );
   }
