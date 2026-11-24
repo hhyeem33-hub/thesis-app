@@ -12,11 +12,14 @@ export function BarChart({
   data,
   unit = "개",
   showPercent = false,
+  labelWidth,
 }: {
   data: BarDatum[];
   unit?: string;
   /** 값 옆에 전체 대비 비율(%)도 보여 준다 */
   showPercent?: boolean;
+  /** 이름 칸 너비 (기본 5.5rem, 이름이 길면 넓힘. 예: "7.5rem") */
+  labelWidth?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...data.map((d) => d.value));
@@ -31,6 +34,7 @@ export function BarChart({
           role="listitem"
           aria-label={`${d.label} ${d.value}${unit}${showPercent ? ` (${pct(d.value)}%)` : ""}`}
           className="relative grid grid-cols-[5.5rem_1fr_auto] items-center gap-3 rounded-md py-1 text-sm"
+          style={labelWidth ? { gridTemplateColumns: `${labelWidth} 1fr auto` } : undefined}
           onMouseEnter={() => setHover(i)}
           onMouseLeave={() => setHover(null)}
         >

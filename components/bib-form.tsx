@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { emptyBib, formatReference, NEED } from "@/lib/bib";
+import { guessMaterial, MATERIAL_TYPES } from "@/lib/material-type";
 import type { Bib, Source } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ export function BibForm({ source }: { source: Pick<Source, "id" | "title" | "ori
   const [pending, startTransition] = useTransition();
   const set = (k: keyof Bib) => (e: React.ChangeEvent<HTMLInputElement>) => setBib((b) => ({ ...b, [k]: e.target.value }));
   const preview = formatReference({ ...source, bib });
+  const guessed = guessMaterial({ ...source, bib }).type;
 
   const field = (k: keyof Bib, label: string, placeholder: string, className?: string) => (
     <div className={cn("flex flex-col gap-1", className)}>
@@ -59,6 +61,37 @@ export function BibForm({ source }: { source: Pick<Source, "id" | "title" | "ori
               {k.label}
             </button>
           ))}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium">
+            자료 유형{" "}
+            {!bib.materialType && (
+              <span className="font-normal text-muted-foreground">
+                · 아직 안 정함{guessed ? ` (짐작: ${guessed})` : " (짐작도 어려워요 — 골라 주세요)"}
+              </span>
+            )}
+          </span>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="자료 유형">
+            {MATERIAL_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={bib.materialType === t}
+                onClick={() => setBib((b) => ({ ...b, materialType: b.materialType === t ? "" : t }))}
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-xs",
+                  bib.materialType === t
+                    ? "border-gold bg-gold/20 font-medium"
+                    : !bib.materialType && guessed === t
+                      ? "border-dashed border-gold"
+                      : "border-input hover:bg-accent"
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           {field("authors", "저자 (쉼표로 구분)", "예: 홍길동, 김철수", "sm:col-span-2")}

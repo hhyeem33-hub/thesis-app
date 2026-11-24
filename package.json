@@ -10,7 +10,8 @@
     "db:setup": "node scripts/db-setup.mjs",
     "db:push": "node scripts/push-sources.mjs",
     "db:pull-doc": "node scripts/pull-doc.mjs",
-    "drive:export": "node scripts/export-drive.mjs"
+    "drive:export": "node scripts/export-drive.mjs",
+    "drive:reorganize": "node --no-warnings scripts/reorganize-drive.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

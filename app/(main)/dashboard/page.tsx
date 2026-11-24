@@ -16,6 +16,7 @@ import { getDoc } from "@/lib/documents";
 import { getStages } from "@/lib/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { countChars, formatReference, NEED } from "@/lib/bib";
+import { MATERIAL_TYPES, materialTypeOf } from "@/lib/material-type";
 import { countAiOutputs, getResearch, getSources } from "@/lib/sources";
 import { PARA, PARA_LABEL, SOURCE_TYPES, SOURCE_TYPE_LABEL } from "@/lib/types";
 
@@ -154,6 +155,15 @@ async function DashboardContent() {
     })),
     { label: SOURCE_TYPE_LABEL.ai, value: aiCount },
   ];
+  // 자료 유형별 (제외한 자료 빼고). 저장된 유형이 없으면 제목·주소로 짐작, 그래도 모르면 ‘확인 필요’
+  const kept = sources.filter((s) => s.classification?.decision?.status !== "excluded");
+  const materialCount = new Map<string, number>();
+  for (const s of kept) {
+    const t = materialTypeOf(s) ?? "확인 필요";
+    materialCount.set(t, (materialCount.get(t) ?? 0) + 1);
+  }
+  const materialData = [...MATERIAL_TYPES, "확인 필요"].map((label) => ({ label, value: materialCount.get(label) ?? 0 }));
+  const materialSaved = kept.filter((s) => s.bib?.materialType).length;
   const gradeData = [5, 4, 3, 2, 1].map((g) => ({
     grade: g,
     value: classified.filter((s) => s.classification!.relevance === g).length,
@@ -233,6 +243,18 @@ async function DashboardContent() {
           </CardHeader>
           <CardContent>
             <BarChart data={paraData} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>유형별 자료 수</CardTitle>
+            <CardDescription>
+              학위논문 · 학술지논문 · 단행본 · 보고서·통계 · 신문기사·웹자료 · 영상자료 · 제외한 자료 빼고 {kept.length}개
+              {materialSaved < kept.length && ` (유형을 저장 안 한 ${kept.length - materialSaved}개는 제목·주소로 짐작)`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BarChart data={materialData} labelWidth="7.5rem" />
           </CardContent>
         </Card>
         <Card>

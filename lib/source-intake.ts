@@ -60,8 +60,9 @@ export async function addSources(items: NewSource[], projectId: string | null) {
     }
     const now = new Date().toISOString();
     // 자료 유형: 받은 값(폴더 이름 등)이 없으면 제목·주소로 짐작해서 저장 (애매하면 빈칸 = 확인 필요)
-    const materialType = isMaterialType(it.bib?.materialType)
-      ? it.bib.materialType
+    const given = it.bib?.materialType;
+    const materialType = isMaterialType(given)
+      ? given
       : (guessMaterial({ title, type: it.type, origin: it.origin, content: it.content, bib: it.bib }).type ?? "");
     const source: Source = {
       id: it.id ?? randomUUID(),

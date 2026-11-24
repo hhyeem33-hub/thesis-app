@@ -6,6 +6,7 @@ import { aiErrorMessage } from "@/lib/ai";
 import { countChars } from "@/lib/bib";
 import { draftChapter, type ChapterDraft } from "@/lib/chapter-draft";
 import { getVersion, listVersions, saveDocOnly, saveDocWithVersion } from "@/lib/documents";
+import { isMaterialType } from "@/lib/material-type";
 import { getSource, saveSource } from "@/lib/sources";
 import { getProjects } from "@/lib/store";
 import type { Bib, DocVersion, Footnote, ThesisDoc } from "@/lib/types";
