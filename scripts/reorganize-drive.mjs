@@ -18,6 +18,7 @@ const { MATERIAL_FOLDER, UNSURE_FOLDER, guessMaterial, guessRegion, isMaterialTy
   pathToFileURL(path.join(ROOT, "lib", "material-type.ts")).href
 );
 
+const LISTS = process.argv.includes("--lists"); // 00_목록.xlsx 만 다시 (--apply 와 같이)
 const APPLY = process.argv.includes("--apply");
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -51,9 +52,11 @@ const OVERRIDE = {
   "700b0dd6": [null, "제목이 ‘카티’뿐이고 본문이 비어 있음 (KATI 농식품수출정보 글)"],
   "375b2b11": [null, "제목이 기관 이름(한국표준협회)뿐이고 본문이 비어 있음"],
   daf61980: [null, "채용 공고 (연구 자료인지 확인 필요)"],
-  b8fa867a: [null, "중국 잡지의 짧은 직업 소개 글 — 학술지 논문인지 확인 필요 (저자·잡지명 없음)"],
+  b8fa867a: ["신문기사·웹자료", "중국 잡지의 짧은 직업 소개 글 (연구자 확정 2026-11-24)"],
   "8f771ae0": ["보고서·통계", "무역협회 베이징지부 시장 동향"],
 };
+// 자료 폴더가 아니라 07_원고 에 두기로 한 것 (연구자 확정 2026-11-24): 내 옵시디언 메모(초안)
+const TO_DOC = new Set(["c3462d38"]);
 // 올린 PDF 의 빈 서지 칸 채우기 (PDF 첫 쪽에서 읽은 것)
 const META = {
   "6415ec13": { title: "2025年睡眠健康行业词条报告", bib: { authors: "何婉怡", year: "2025", publisher: "头豹研究院" } },
@@ -106,7 +109,7 @@ for (const s of sources) {
   const guess = guessMaterial(s);
   const [type, reason] = OVERRIDE[key] ?? (isMaterialType(s.bib?.materialType) ? [s.bib.materialType, "앱에 저장된 유형"] : [guess.type, guess.reason]);
   const region = type === "학위논문" || type === "학술지논문" ? guessRegion({ ...s, title }) : null;
-  const folder = type ? path.join(MATERIAL_FOLDER[type], region ?? "") : UNSURE_FOLDER;
+  const folder = TO_DOC.has(key) ? DOC_FOLDER : type ? path.join(MATERIAL_FOLDER[type], region ?? "") : UNSURE_FOLDER;
   const authors = (bib.authors ?? "").split(/\s*[,，、;]\s*/).filter(Boolean);
   const who = authors.length > 1 ? `${authors[0]} 외` : authors[0] || bib.publisher || bib.journal || host(s.origin) || "저자미상";
   const year = bib.year || "연도미상";
@@ -168,6 +171,7 @@ const ALL_FOLDERS = [
   OUT_FOLDER,
   UNSURE_FOLDER,
 ];
+const LIST_FOLDERS = [...ALL_FOLDERS, MATERIAL_FOLDER["학위논문"], MATERIAL_FOLDER["학술지논문"]];
 const rel = (p) => path.relative(WORKROOM, p);
 console.log(`정리할 곳: ${base}`);
 console.log(`자료 ${items.length}개 (‘제외’ 결정 ${sources.length - items.length}개 빼고)`);
@@ -346,6 +350,21 @@ const safeMove = (from, toDir, isDir = false) => {
   return to;
 };
 
+// --lists: 파일은 그대로 두고 폴더마다 00_목록.xlsx 만 지금 상태로 다시 만든다.
+//          예전 목록은 지우지 않고 '_정리 전 보관/예전 00_목록 (날짜)/<폴더>' 로 옮긴다.
+if (LISTS) {
+  const missing = items.filter((it) => !existsSync(path.join(base, it.folder, it.fileName)));
+  for (const it of missing) console.log(`  ! 폴더에 .docx 가 없어요: ${it.folder}/${it.fileName}`);
+  const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/:/g, "").replace(" ", "_").slice(0, 15);
+  const old = path.join(ARCHIVE, `예전 00_목록 (${stamp})`);
+  for (const f of LIST_FOLDERS) {
+    const to = safeMove(path.join(base, f, "00_목록.xlsx"), path.join(old, f));
+    if (to) console.log(`예전 목록 보관: ${f}/00_목록.xlsx → ${rel(to)}`);
+  }
+  await writeAllLists();
+  process.exit(0);
+}
+
 // a) 폴더 만들기
 for (const f of ALL_FOLDERS) mkdirSync(path.join(base, f), { recursive: true });
 // b) 자료 .docx
@@ -368,6 +387,9 @@ for (const m of folderMoves) {
 }
 
 // e) 폴더마다 00_목록.xlsx
+await writeAllLists();
+
+async function writeAllLists() {
 const HEAD = ["번호", "저자", "연도", "제목", "출처(학술지·기관)", "내 결정", "파일 이름"];
 const W = [6, 22, 8, 60, 30, 9, 50];
 const rowsOf = (list) => list.map((it, i) => [i + 1, it.who, it.year, it.title, it.from, it.decision, it.fileName]);
@@ -383,7 +405,9 @@ const writeList = async (folder, list, extraFiles = []) => {
 };
 for (const f of ALL_FOLDERS) {
   const list = items.filter((x) => x.folder === f);
-  const extra = (movedInto.get(f) ?? []).filter((n) => !Object.values(PDF_OF).includes(n));
+  // 자료 .docx·원본 PDF 말고 폴더에 실제로 있는 파일(옮겨 온 영상 목록 등)도 목록에 넣는다
+  const mine = new Set(list.map((it) => it.fileName));
+  const extra = listFiles(path.join(base, f)).filter((n) => !mine.has(n) && !Object.values(PDF_OF).includes(n));
   if (f === UNSURE_FOLDER) {
     const rows = [...list].sort(sortKo).map((it, i) => [i + 1, it.who, it.year, it.title, it.from, it.decision, it.reason, it.s.origin, it.fileName]);
     const file = path.join(base, f, "00_목록.xlsx");
@@ -408,6 +432,7 @@ for (const t of ["학위논문", "학술지논문"]) {
   listWritten.push(MATERIAL_FOLDER[t]);
 }
 console.log(`00_목록.xlsx: ${listWritten.join(", ")}`);
+}
 
 // f) 앱 기록(data/sources.json)에 자료 유형 저장 + PDF 서지 빈 칸 채우기 (먼저 백업)
 const backup = path.join(ROOT, "data", `sources.before-material-type.json`);
