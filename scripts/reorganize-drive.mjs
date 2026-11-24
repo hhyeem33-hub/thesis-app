@@ -325,8 +325,15 @@ if (!APPLY) {
 let written = 0;
 let skipped = 0;
 let moved = 0;
+// --lists 에서 예전 내용을 보관 폴더에 복사해 둔 목록 파일만 그 자리에 덮어써도 된다
+const listOverwrite = new Set();
 const writeNew = (file, buf) => {
   if (!inside(file)) throw new Error(`논문작업실 밖에는 쓸 수 없어요: ${file}`);
+  if (listOverwrite.has(path.resolve(file))) {
+    writeFileSync(file, buf);
+    written++;
+    return;
+  }
   try {
     writeFileSync(file, buf, { flag: "wx" });
     written++;
@@ -398,9 +405,16 @@ if (LISTS) {
   for (const it of missing) console.log(`  ! 폴더에 자료 카드가 없어요: ${it.folder}/${cardName(it)}`);
   const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/:/g, "").replace(" ", "_").slice(0, 15);
   const old = path.join(ARCHIVE, `예전 00_목록 (${stamp})`);
+  // 예전 목록은 보관 폴더에 ‘복사’해 두고 그 자리에 덮어쓴다.
+  // (옮긴 뒤 같은 이름으로 새로 만들면 구글 드라이브 동기화가 예전 파일을 되살려 놓는 일이 있었음 — 2026-11-24)
   for (const f of LIST_FOLDERS) {
-    const to = safeMove(path.join(base, f, "00_목록.xlsx"), path.join(old, f));
-    if (to) console.log(`예전 목록 보관: ${f}/00_목록.xlsx → ${rel(to)}`);
+    const file = path.join(base, f, "00_목록.xlsx");
+    if (!existsSync(file)) continue;
+    const dir = path.join(old, f);
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(file, path.join(dir, "00_목록.xlsx"), constants.COPYFILE_EXCL);
+    listOverwrite.add(path.resolve(file));
+    console.log(`예전 목록 보관(복사): ${f}/00_목록.xlsx → ${rel(dir)}`);
   }
   await writeAllLists();
 
