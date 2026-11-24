@@ -1,6 +1,7 @@
 import path from "path";
 import { revalidatePath } from "next/cache";
 import { addSources, extractText, type NewSource } from "@/lib/source-intake";
+import { materialFromFolder } from "@/lib/material-type";
 import { getProjects } from "@/lib/store";
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
   // 구글 드라이브에서 받은 파일은 화면이 출처(드라이브 주소)를 함께 보낸다 (파일 순서대로)
   const origins = form.getAll("origins").map(String);
-  // 폴더 통째로 가져오기: 하위 폴더 이름을 자료 분류(bib.category)로 (파일 순서대로)
+  // 폴더 통째로 가져오기: 하위 폴더 이름을 자료 분류(bib.category)·자료 유형(bib.materialType)으로 (파일 순서대로)
   const categories = form.getAll("categories").map(String);
   if (!files.length) return Response.json({ error: "파일을 골라 주세요." }, { status: 400 });
   const items: NewSource[] = [];
@@ -30,7 +31,8 @@ export async function POST(req: Request) {
         type,
         origin: origins[i] || `내 파일: ${file.name}`,
         content: text,
-        ...(categories[i] ? { bib: { category: categories[i].slice(0, 60) } } : {}),
+        // 폴더 이름이 자료 유형이면(예: 02_학술지논문 / 국내) 유형으로도 저장
+        ...(categories[i] ? { bib: { category: categories[i].slice(0, 60), materialType: materialFromFolder(categories[i]) ?? "" } } : {}),
       });
     } catch (e) {
       failed.push({ name: file.name, error: e instanceof Error ? e.message : String(e) });

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { existsSync, promises as fs } from "fs";
 import path from "path";
 import { emptyBib } from "./bib";
+import { guessMaterial, isMaterialType } from "./material-type";
 import { ONLINE } from "./db";
 import { getSources, saveSource } from "./sources";
 import { getSettings } from "./store";
@@ -58,6 +59,10 @@ export async function addSources(items: NewSource[], projectId: string | null) {
       continue;
     }
     const now = new Date().toISOString();
+    // 자료 유형: 받은 값(폴더 이름 등)이 없으면 제목·주소로 짐작해서 저장 (애매하면 빈칸 = 확인 필요)
+    const materialType = isMaterialType(it.bib?.materialType)
+      ? it.bib.materialType
+      : (guessMaterial({ title, type: it.type, origin: it.origin, content: it.content, bib: it.bib }).type ?? "");
     const source: Source = {
       id: it.id ?? randomUUID(),
       projectId,
@@ -68,7 +73,7 @@ export async function addSources(items: NewSource[], projectId: string | null) {
       createdAt: now,
       updatedAt: now,
       classification: null,
-      bib: { ...emptyBib(it.type === "pdf" ? "article" : "web"), ...(it.bib ?? {}) },
+      bib: { ...emptyBib(it.type === "pdf" ? "article" : "web"), ...(it.bib ?? {}), materialType },
     };
     await saveSource(source);
     ids.add(source.id);

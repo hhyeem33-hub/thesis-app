@@ -1,3 +1,4 @@
+import type { MaterialType } from "./material-type";
 export type FolderStatus = {
   ok: boolean;
   /** 생성된 폴더의 전체 경로 (성공했을 때) */
@@ -169,6 +170,8 @@ export type Bib = {
   kciId: string;
   /** 자료 분류 표시 (예: 선행연구) */
   category: string;
+  /** 자료 유형 (학위논문·학술지논문·단행본·보고서·통계·신문기사·웹자료·영상자료). 비면 제목·주소로 짐작 (lib/material-type.ts) */
+  materialType?: MaterialType | "";
 };
 
 export type Footnote = {

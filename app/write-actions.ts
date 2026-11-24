@@ -116,6 +116,7 @@ export async function updateSourceBib(id: string, bib: Bib): Promise<Result> {
       Object.entries(bib).map(([k, v]) => [k, String(v ?? "").trim().slice(0, 300)])
     ) as Bib;
     if (!["article", "book", "web"].includes(clean.kind)) clean.kind = "web";
+    if (!isMaterialType(clean.materialType)) clean.materialType = "";
     await saveSource({ ...source, bib: clean, updatedAt: new Date().toISOString() });
     revalidatePath(`/sources/${id}`);
     revalidatePath("/write");
