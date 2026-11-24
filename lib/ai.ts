@@ -407,3 +407,70 @@ ${list}`,
     },
   };
 }
+
+// ── 국문 초록·주제어 초안 (본문만 근거) ─────────────────────────────────────────
+const AbstractSchema = z.object({
+  enough: z.boolean().describe("본문이 초록을 쓸 만큼 있으면 true, 거의 비어 있으면 false"),
+  abstract: z.string().describe("국문 초록 (문단 1~3개, 문단 사이 빈 줄). enough 가 false 면 빈 문자열"),
+  keywords: z.array(z.string()).describe("주제어 4~6개 (본문에 실제로 나오는 말)"),
+});
+
+const ABSTRACT_SYSTEM = `너는 한국외국어대학교 대학원생 논문의 국문 초록과 주제어 초안을 쓰는 연구 보조자다.
+주어진 논문 본문만 근거로 쓴다. 본문에 없는 내용은 쓰지 않는다.
+
+- 연구 목적 → 연구 대상·방법 → 주요 내용(결과) → 의의 순서로, 학위논문 문어체("~이다", "~하였다")로 쓴다.
+- 본문에 없는 수치·통계·결과·고유명사는 절대 지어내지 않는다. 결과가 아직 본문에 없으면 "[확인 필요]" 자리로 둔다.
+- 초록 길이: 학위논문·연구보고서는 800~1,200자, 학술지 논문은 500~800자.
+- 주제어는 본문에 실제로 나오는 핵심어 4~6개.
+- 본문이 거의 비어 있으면 enough=false 로 답한다.`;
+
+export async function writeAbstract(input: { title: string; kind: string; body: string }) {
+  const client = await getClient();
+  const response = await client.messages.parse({
+    model: AI_MODEL,
+    max_tokens: 4000,
+    output_config: { effort: "low", format: zodOutputFormat(AbstractSchema) },
+    system: ABSTRACT_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `[글 종류] ${input.kind}\n[논문 제목] ${input.title || "(없음)"}\n\n[논문 본문]\n${input.body.slice(0, 60_000)}`,
+      },
+    ],
+  });
+  if (response.stop_reason === "refusal") throw new Error("AI가 초록을 쓰지 않겠다고 했어요.");
+  if (!response.parsed_output) throw new Error("AI 답변을 읽지 못했어요. 다시 시도해 주세요.");
+  return response.parsed_output;
+}
+
+// ── 원문 PDF 첫 쪽 → 서지 정보 ─────────────────────────────────────────────────
+const BibSchema = z.object({
+  found: z.boolean().describe("첫 쪽에서 서지 정보를 하나라도 찾았으면 true"),
+  kind: z.enum(["article", "book", "web"]).describe("학술지 논문·학위논문=article, 단행본=book, 그 밖=web"),
+  authors: z.string().describe("저자들 (쉼표로 나눔, 원문 표기 그대로). 없으면 빈 문자열"),
+  year: z.string().describe("발행 연도 4자리. 없으면 빈 문자열"),
+  journal: z.string().describe("학술지 이름 (학위논문이면 '○○대학교 대학원 석사학위논문' 꼴). 없으면 빈 문자열"),
+  volume: z.string().describe("권. 없으면 빈 문자열"),
+  issue: z.string().describe("호. 없으면 빈 문자열"),
+  pages: z.string().describe("쪽 범위 (예: 163-182). 없으면 빈 문자열"),
+  publisher: z.string().describe("발행 기관·학회·출판사. 없으면 빈 문자열"),
+  doi: z.string().describe("DOI (10.로 시작). 없으면 빈 문자열"),
+});
+export type BibSuggestion = z.infer<typeof BibSchema>;
+
+const BIB_SYSTEM = `너는 논문 PDF 첫 쪽 글자에서 서지 정보를 옮겨 적는 보조자다.
+첫 쪽 글자에 실제로 적혀 있는 것만 옮긴다. 추측하거나 지어내지 않는다. 안 보이는 칸은 빈 문자열로 둔다.
+저자 이름은 원문 표기 그대로(한국어·중국어·영어) 쓰고, 소속·이메일·직위는 빼고 이름만 쓴다.`;
+
+export async function extractBib(input: { title: string; text: string }) {
+  const client = await getClient();
+  const response = await client.messages.parse({
+    model: AI_MODEL,
+    max_tokens: 1500,
+    output_config: { effort: "low", format: zodOutputFormat(BibSchema) },
+    system: BIB_SYSTEM,
+    messages: [{ role: "user", content: `[앱에 저장된 제목] ${input.title}\n\n[PDF 첫 쪽 글자]\n${input.text.slice(0, 6000)}` }],
+  });
+  if (!response.parsed_output) throw new Error("AI 답변을 읽지 못했어요. 다시 시도해 주세요.");
+  return response.parsed_output;
+}

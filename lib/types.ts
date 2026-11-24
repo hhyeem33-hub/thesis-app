@@ -194,7 +194,19 @@ export type ThesisDoc = {
   body: string;
   footnotes: Footnote[];
   updatedAt: string;
+  /** 국문 초록 */
+  abstract?: string;
+  /** 주제어 (쉼표로 나눔) */
+  keywords?: string;
+  /** 분량 설정: 글 종류 + 장 수 + 장별 목표 글자 수 (장 순서대로) */
+  plan?: DocPlan;
+  /** 집필 단계 중 저장으로 알 수 없는 것: 양식 적용(출력함)·최종 확인 한 때 */
+  marks?: { formatAt?: string; finalAt?: string };
 };
+
+export const DOC_KINDS = ["thesis", "journal", "report"] as const;
+export type DocKind = (typeof DOC_KINDS)[number];
+export type DocPlan = { kind: DocKind; chapters: number; targets: number[] };
 
 export type DocVersion = {
   id: string;

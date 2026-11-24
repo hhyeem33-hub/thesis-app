@@ -130,6 +130,8 @@ for (const s of sources) {
     from,
     decision: DECISION[s.classification?.decision?.status] ?? "미정",
     fileBase: safe(`${safe(who, 30)}_${year}_${title}`),
+    // 원문 PDF 이름 규칙: 연도_저자_제목.pdf
+    originalBase: safe(`${year}_${safe(who, 30)}_${title}`),
   });
 }
 // 같은 폴더에서 이름이 겹치면 _2, _3
@@ -365,8 +367,9 @@ const safeMove = (from, toDir, isDir = false) => {
 // 자료 카드 파일: .docx 를 PDF 로 바꿨으면(같은 이름 .pdf 가 있으면) .pdf 를 쓴다
 const cardBase = (it) => it.fileName.replace(/\.docx$/i, "");
 const cardName = (it) => (existsSync(path.join(base, it.folder, `${cardBase(it)}.pdf`)) ? `${cardBase(it)}.pdf` : it.fileName);
-// 원문 PDF 이름 규칙: "<자료 카드 이름>_원문.pdf" (원문_다운로드_목록.xlsx 의 ‘저장할 파일 이름’)
+// 원문 PDF 이름 규칙: "연도_저자_제목.pdf" (원문_다운로드_목록.xlsx 의 ‘저장할 파일 이름’). 예전 규칙 "<카드 이름>_원문.pdf" 도 알아봄
 const ORIGINAL_SUFFIX = "_원문.pdf";
+const originalName = (it) => `${it.originalBase}.pdf`;
 const norm = (t) => String(t ?? "").normalize("NFC").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
 // 자료마다 같은 폴더의 원문 PDF 찾기 (자료 카드 PDF 는 빼고, PDF 하나는 자료 하나에만):
 //   ① 정해 둔 원본(PDF_OF) ② "<카드 이름>_원문.pdf" ③ 파일 이름에 KCI 번호(ART…) ④ 파일 이름에 제목 앞 14자(하나만 맞을 때)
@@ -384,7 +387,8 @@ const originals = new Map();
       originals.set(it, n);
     };
     for (const it of list) if (pdfs.includes(PDF_OF[it.key])) take(it, PDF_OF[it.key]);
-    for (const it of list) if (!originals.has(it)) take(it, pdfs.find((n) => n === `${cardBase(it)}${ORIGINAL_SUFFIX}`));
+    for (const it of list)
+      if (!originals.has(it)) take(it, pdfs.find((n) => n === originalName(it) || n === `${cardBase(it)}${ORIGINAL_SUFFIX}`));
     for (const it of list)
       if (!originals.has(it) && it.bib.kciId) take(it, pdfs.find((n) => !taken.has(n) && n.toUpperCase().includes(it.bib.kciId.toUpperCase())));
     for (const it of list) {
@@ -401,6 +405,16 @@ const originalOf = (it) => originals.get(it) ?? "";
 // --lists: 파일은 그대로 두고 폴더마다 00_목록.xlsx 만 지금 상태로 다시 만든다.
 //          예전 목록은 지우지 않고 '_정리 전 보관/예전 00_목록 (날짜)/<폴더>' 로 옮긴다.
 if (LISTS) {
+  // 찾은 원문 PDF 이름을 규칙(연도_저자_제목.pdf)으로 맞춘다 — 같은 폴더 안에서 이름만 바꿈, 같은 이름이 있으면 _2
+  // (처음부터 있던 원본 PDF(PDF_OF)는 자료 카드에 그 이름이 적혀 있어서 그대로 둔다)
+  for (const [it, n] of originals) {
+    if (n === originalName(it) || n === PDF_OF[it.key]) continue;
+    const dir = path.join(base, it.folder);
+    const to = freeName(dir, originalName(it));
+    renameSync(path.join(dir, n), path.join(dir, to));
+    originals.set(it, to);
+    console.log(`원문 이름 맞춤: ${it.folder}/${n} → ${to}`);
+  }
   const missing = items.filter((it) => !existsSync(path.join(base, it.folder, cardName(it))));
   for (const it of missing) console.log(`  ! 폴더에 자료 카드가 없어요: ${it.folder}/${cardName(it)}`);
   const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Seoul" }).replace(/:/g, "").replace(" ", "_").slice(0, 15);
@@ -460,12 +474,20 @@ if (LISTS) {
       it.year,
       it.folder.split(path.sep).join(" / "),
       linkOf(it) ? { link: linkOf(it) } : "[링크 없음 — 제목으로 검색]",
-      `${cardBase(it)}${ORIGINAL_SUFFIX}`,
+      originalName(it),
       originalOf(it) ? "있음" : "",
       it.decision,
       it.s.classification?.relevance || "",
     ]);
-    const name = freeName(base, "원문_다운로드_목록.xlsx");
+    // 이미 있으면 예전 것은 '중복 폴더'에 복사해 두고 그 자리에 덮어씀
+    const name = "원문_다운로드_목록.xlsx";
+    const file = path.join(base, name);
+    if (existsSync(file)) {
+      const dir = path.join(old, "_프로젝트 맨 위");
+      mkdirSync(dir, { recursive: true });
+      copyFileSync(file, path.join(dir, name), constants.COPYFILE_EXCL);
+      listOverwrite.add(path.resolve(file));
+    }
     writeNew(
       path.join(base, name),
       await makeXlsx("원문 다운로드", ["번호", "제목", "저자", "연도", "들어갈 폴더", "링크", "저장할 파일 이름", "원문 있음", "내 결정", "관련도"], rows, [6, 60, 22, 8, 24, 60, 60, 9, 9, 8])

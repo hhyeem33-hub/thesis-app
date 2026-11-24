@@ -5,7 +5,7 @@ import type { Footnote, ThesisDoc } from "./types";
 // 글쓰기 원고 → 출력용 구조 (HTML · Markdown · PDF(인쇄) · Word 공용)
 // 장 "# " → 1. / 절 "## " → 1.1. / 목 "### " → 1.1.1, 각주 [^id] → 본문 순서 번호
 
-export type ExportDoc = Pick<ThesisDoc, "title" | "author" | "affiliation" | "body" | "footnotes">;
+export type ExportDoc = Pick<ThesisDoc, "title" | "author" | "affiliation" | "body" | "footnotes" | "abstract" | "keywords">;
 
 /** 글자와 각주 번호가 번갈아 나온다 */
 export type Parts = (string | { note: number })[];
@@ -23,6 +23,9 @@ export type Outline = {
   title: string;
   author: string;
   affiliation: string;
+  /** 국문 초록 (문단은 빈 줄로) · 주제어 (없으면 빈 문자열) */
+  abstract: string;
+  keywords: string;
   blocks: Block[];
   /** 본문 순서대로의 각주 글 */
   notes: string[];
@@ -73,6 +76,8 @@ export function outline(doc: ExportDoc, references: string[]): Outline {
     title: doc.title.trim() || NEED,
     author: doc.author.trim(),
     affiliation: doc.affiliation.trim(),
+    abstract: doc.abstract?.trim() ?? "",
+    keywords: doc.keywords?.trim() ?? "",
     blocks,
     notes,
     references,
@@ -155,12 +160,16 @@ export function toHtml(o: Outline, opts: { print?: boolean } = {}) {
   .notes ol { font-size: 9pt; padding-left: 1.4rem; }
   .notes a { text-decoration: none; color: #888; }
   .refs p { text-indent: -2em; padding-left: 2em; font-size: 9.5pt; }
+  .abstract { margin: 0 0 2rem; padding: .8rem 1rem; border-top: 1px solid #bbb; border-bottom: 1px solid #bbb; font-size: 9.5pt; }
+  .abstract h2 { font-size: 11pt; text-align: center; margin: 0 0 .5rem; }
+  .abstract .kw { text-indent: 0; margin-top: .5rem; }
   ${opts.print ? "@media print { body { margin: 0; max-width: none; } .notes a[href^='#r'] { display: none; } }" : ""}
 </style>
 </head>
 <body>
 <h1>${esc(o.title)}</h1>
 ${byline ? `<p class="byline">${byline}</p>` : ""}
+${abstractHtml(o)}
 ${body}
 ${notes}
 ${refs}
@@ -170,11 +179,23 @@ ${refs}
 
 const md = (parts: Parts) => parts.map((p) => (typeof p === "string" ? p : `[^${p.note}]`)).join("");
 
+/** 국문 초록·주제어 (HTML·PDF) */
+function abstractHtml(o: Outline) {
+  if (!o.abstract && !o.keywords) return "";
+  const paras = o.abstract
+    .split(/\n\s*\n/)
+    .map((p) => `<p>${esc(p.replace(/\n/g, " "))}</p>`)
+    .join("");
+  return `<section class="abstract"><h2>국문 초록</h2>${paras}${o.keywords ? `<p class="kw"><b>주제어</b>: ${esc(o.keywords)}</p>` : ""}</section>`;
+}
+
 /** Markdown: 각주는 [^1] 형식, 참고문헌은 목록 */
 export function toMarkdown(o: Outline) {
   const lines = [`# ${o.title}`, ""];
   const byline = [o.author, o.affiliation].filter(Boolean).join(" · ");
   if (byline) lines.push(`*${byline}*`, "");
+  if (o.abstract) lines.push("## 국문 초록", "", o.abstract, "");
+  if (o.keywords) lines.push(`**주제어**: ${o.keywords}`, "");
   for (const b of o.blocks) {
     if (b.kind === "heading") lines.push(`${"#".repeat(b.level + 2)} ${b.num} ${b.text}`, "");
     else if (b.kind === "table") {
@@ -251,6 +272,20 @@ export async function toDocx(o: Outline): Promise<Blob> {
   ];
   const byline = [o.author, o.affiliation].filter(Boolean).join(" · ");
   if (byline) children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 400 }, children: [new TextRun({ text: byline, size: 21, font: FONT })] }));
+  if (o.abstract || o.keywords) {
+    children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 120, after: 120 }, children: [new TextRun({ text: "국문 초록", bold: true, size: 22, font: FONT })] }));
+    for (const p of o.abstract.split(/\n\s*\n/).filter((x) => x.trim()))
+      children.push(
+        new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          indent: { firstLine: 200 },
+          spacing: { line: 320, after: 80 },
+          children: [new TextRun({ text: p.replace(/\n/g, " "), size: 19, font: FONT })],
+        })
+      );
+    if (o.keywords)
+      children.push(new Paragraph({ spacing: { before: 80, after: 400 }, children: [new TextRun({ text: "주제어: ", bold: true, size: 19, font: FONT }), new TextRun({ text: o.keywords, size: 19, font: FONT })] }));
+  }
   const headingSize = [26, 22, 21];
   const headingLevel = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3];
   for (const b of o.blocks) {

@@ -180,6 +180,19 @@ class ThesisBuilder:
         self.add(name)
         self.add(self.proto("blank"))
 
+        # 국문 초록·주제어 (원고에 있을 때만): 제목은 참고문헌 제목 문단 모양, 내용은 본문 문단
+        abstract = (m.get("abstract") or "").strip()
+        keywords = (m.get("keywords") or "").strip()
+        if abstract or keywords:
+            self.add(set_text(self.proto("ref_head"), "국문 초록"))
+            self.add(self.proto("ref_blank"))
+            for para in re.split(r"\n\s*\n", abstract):
+                if para.strip():
+                    self.body(" ".join(para.split()))
+            if keywords:
+                self.body(f"주제어: {keywords}")
+            self.add(self.proto("blank"))
+
         toc = self.proto("toc")
         cell = next(tc for tc in toc.iter(q("tc")) if tc.find(q("cellAddr")).get("rowAddr") == "2")
         sub = cell.find(q("subList"))

@@ -3,7 +3,7 @@
 import { guestBlock } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { aiErrorMessage, classifySource, getAiKeyStatus } from "@/lib/ai";
+import { aiErrorMessage, classifySource, extractBib, getAiKeyStatus, type BibSuggestion } from "@/lib/ai";
 import { ONLINE } from "@/lib/online";
 import { ruleClassify } from "@/lib/rule-classify";
 import { getSource, getSources, saveResearch, saveSource } from "@/lib/sources";
@@ -317,4 +317,49 @@ export async function openOriginalPdf(id: string): Promise<ActionResult> {
   // explorer.exe 는 성공해도 종료 코드 1을 돌려줄 때가 있어 오류는 무시한다
   execFile("explorer.exe", [file], () => {});
   return { ok: true };
+}
+
+/**
+ * PDF 첫 쪽으로 서지 정보 채우기 (AI 제안만 돌려준다 — 서지 칸에 넣고 저장하는 것은 사람이).
+ * 내 컴퓨터: 연결된 원문 PDF(bib.originalPdf)의 첫 쪽 · 온라인이거나 연결이 없으면: 올린 PDF 자료 본문의 앞부분
+ */
+export async function suggestBibFromPdf(id: string): Promise<ActionResult & { bib?: BibSuggestion; from?: string }> {
+  const blocked = await guestBlock();
+  if (blocked) return blocked;
+  try {
+    const source = await getSource(id);
+    if (!source) return { ok: false, error: "자료를 찾을 수 없어요." };
+    let text = "";
+    let from = "";
+    const rel = source.bib?.originalPdf;
+    if (!ONLINE && rel) {
+      const { driveRootPath } = await getSettings();
+      const workroom = path.resolve(driveRootPath, "논문작업실");
+      const file = path.resolve(workroom, rel);
+      if (file.startsWith(workroom + path.sep) && /\.pdf$/i.test(file)) {
+        const bytes = await fs.readFile(file).catch(() => null);
+        if (bytes) {
+          const { extractText, getDocumentProxy } = await import("unpdf");
+          const pdf = await getDocumentProxy(new Uint8Array(bytes));
+          const { text: pages } = await extractText(pdf, { mergePages: false });
+          text = (Array.isArray(pages) ? pages.slice(0, 2).join("\n") : String(pages)).trim();
+          from = `원문 PDF 첫 쪽 (${path.basename(file)})`;
+        }
+      }
+    }
+    if (!text && source.type === "pdf") {
+      text = source.content.slice(0, 5000).trim();
+      from = "올린 PDF 의 앞부분";
+    }
+    if (!text)
+      return {
+        ok: false,
+        error: rel && ONLINE ? "원문 PDF 는 내 컴퓨터에서만 읽을 수 있어요." : "읽을 PDF 가 없어요. PDF 로 올린 자료나 원문 PDF 가 연결된 자료에서 써 주세요.",
+      };
+    const bib = await extractBib({ title: source.title, text });
+    if (!bib.found) return { ok: false, error: `${from}에서 서지 정보를 찾지 못했어요. 스캔한 이미지 PDF 일 수 있어요.` };
+    return { ok: true, bib, from };
+  } catch (e) {
+    return { ok: false, error: aiErrorMessage(e) };
+  }
 }

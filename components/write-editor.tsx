@@ -8,6 +8,7 @@ import {
   BookMarked,
   Copy,
   Eye,
+  FileText,
   FileDown,
   History,
   Library,
@@ -21,7 +22,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchVersion, restoreVersion, saveDocument, tempSaveDocument } from "@/app/write-actions";
+import { fetchVersion, markDocStage, restoreVersion, saveDocument, tempSaveDocument } from "@/app/write-actions";
+import { AbstractCard, FinalCheckBar, FinalManuscript, VolumeCard, WritingStages } from "@/components/writing-flow";
 import { ChapterDrafter } from "@/components/chapter-drafter";
 import { DocExport } from "@/components/doc-export";
 import type { TemplateInfo } from "@/components/hwpx-export";
@@ -50,7 +52,8 @@ import {
 } from "@/lib/bib";
 import type { AiDraftRecord, Bib, DocVersion, Footnote, Source, ThesisDoc } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { tableCaption } from "@/lib/export-doc";
+import { checkPoints, tableCaption } from "@/lib/export-doc";
+import { missingBib } from "@/lib/writing";
 import { parseTable } from "@/lib/table";
 
 export type LibrarySource = Pick<Source, "id" | "title" | "origin" | "type"> & { bib?: Bib | null };
@@ -220,7 +223,7 @@ export function WriteEditor({
   const [versions, setVersions] = useState(initialVersions);
   const [memo, setMemo] = useState("");
   const [tab, setTab] = useState<Tab>("footnotes");
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "preview" | "final">("edit");
   const [picker, setPicker] = useState<{ footnoteId: string | null } | null>(null);
   const [viewing, setViewing] = useState<DocVersion | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<VersionInfo | null>(null);
@@ -236,6 +239,24 @@ export function WriteEditor({
   const usedFns = [...numbers.keys()].map((id) => doc.footnotes.find((f) => f.id === id)).filter(Boolean) as Footnote[];
   const orphanFns = doc.footnotes.filter((f) => !numbers.has(f.id));
   const sourceById = useMemo(() => new Map(sources.map((s) => [s.id, s])), [sources]);
+  // 집필 단계의 ‘저장✓’ 는 저장된 원고 기준
+  const savedDoc = useMemo(() => JSON.parse(savedSnapshot) as ThesisDoc, [savedSnapshot]);
+  const savedRefs = useMemo(() => buildReferences(savedDoc, sources).map((r) => r.text), [savedDoc, sources]);
+  const refTexts = references.map((r) => r.text);
+
+  /** 양식 적용(출력함)·최종 확인 표시를 원고에 남긴다 (다른 고친 내용은 저장하지 않음) */
+  function mark(stage: "format" | "final", on = true) {
+    startTransition(async () => {
+      const r = await markDocStage(doc.projectId, stage, on);
+      if (!r.ok) {
+        if (stage === "final") toast.error("표시하지 못했어요", { description: r.error });
+        return;
+      }
+      setDoc((d) => ({ ...d, marks: r.marks }));
+      setSavedSnapshot((snap) => JSON.stringify({ ...(JSON.parse(snap) as ThesisDoc), marks: r.marks }));
+      if (stage === "final" && on) toast.success("최종 확인을 표시했어요");
+    });
+  }
 
   // 저장 안 한 채 나가려 하면 묻기
   useEffect(() => {
@@ -409,6 +430,9 @@ export function WriteEditor({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="xl:col-span-2">
+        <WritingStages saved={savedDoc} live={doc} savedRefs={savedRefs} liveRefs={refTexts} />
+      </div>
       {/* ── 왼쪽: 원고 ── */}
       <div className="flex min-w-0 flex-col gap-3">
         <Card>
@@ -437,6 +461,9 @@ export function WriteEditor({
           </CardContent>
         </Card>
 
+        <AbstractCard doc={doc} disabled={guest} onChange={update} />
+        <VolumeCard body={doc.body} plan={doc.plan} onChange={(plan) => update({ plan })} />
+
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="mr-1 inline-flex rounded-lg border p-0.5">
             <Button size="sm" variant={mode === "edit" ? "secondary" : "ghost"} onClick={() => setMode("edit")}>
@@ -447,6 +474,12 @@ export function WriteEditor({
               <Eye />
               미리보기
             </Button>
+            <Hint label="A4 종이 모양으로 외대 양식처럼 보기 (초록·목차·각주·참고문헌 포함)">
+              <Button size="sm" variant={mode === "final" ? "secondary" : "ghost"} onClick={() => setMode("final")}>
+                <FileText />
+                최종 원고
+              </Button>
+            </Hint>
           </div>
           {mode === "edit" && (
             <>
@@ -499,9 +532,20 @@ export function WriteEditor({
                 }
                 className="min-h-[60vh] resize-y font-serif text-[15px] leading-8"
               />
-            ) : (
+            ) : mode === "preview" ? (
               <div className="min-h-[60vh] px-2 py-1">
-                <Preview doc={doc} references={references.map((r) => r.text)} />
+                <Preview doc={doc} references={refTexts} />
+              </div>
+            ) : (
+              <div className="-mx-2 flex flex-col gap-3">
+                <FinalManuscript doc={doc} references={refTexts} />
+                <FinalCheckBar
+                  {...checkPoints(doc, refTexts)}
+                  dirty={dirty}
+                  checkedAt={savedDoc.marks?.finalAt}
+                  pending={pending}
+                  onCheck={(on) => mark("final", on)}
+                />
               </div>
             )}
           </CardContent>
@@ -620,13 +664,26 @@ export function WriteEditor({
                 <p className="text-sm text-muted-foreground">아직 출처 각주가 없어요. ‘자료로 각주’를 써 보세요.</p>
               ) : (
                 <ol className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto text-sm">
-                  {references.map((r) => (
-                    <li key={r.id} className="pl-5 -indent-5 leading-6">
-                      <Link href={`/sources/${r.id}`} className="hover:underline">
-                        <Need text={r.text} />
-                      </Link>
-                    </li>
-                  ))}
+                  {references.map((r) => {
+                    const src = sourceById.get(r.id);
+                    const miss = src ? missingBib(src) : [];
+                    return (
+                      <li key={r.id} className="pl-5 -indent-5 leading-6">
+                        <Link href={`/sources/${r.id}`} className="hover:underline">
+                          <Need text={r.text} />
+                        </Link>
+                        {miss.length > 0 && (
+                          <Link
+                            href={`/sources/${r.id}`}
+                            className="ml-1.5 inline-block rounded-full bg-gold/20 px-2 indent-0 text-xs font-medium hover:bg-gold/30"
+                            title={`빠진 칸: ${miss.join(", ")} — 자료 화면에서 채우거나 ‘PDF 첫 쪽으로 서지 정보 채우기’`}
+                          >
+                            서지 정보 보완 필요 · {miss.join("·")}
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
               {references.length > 0 && (
@@ -742,6 +799,7 @@ export function WriteEditor({
               onTempSave={tempSave}
               onSave={save}
               onTemplatesChange={() => router.refresh()}
+              onExported={() => mark("format")}
             />
           )}
         </CardContent>

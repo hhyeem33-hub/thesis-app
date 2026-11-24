@@ -168,6 +168,8 @@ export function docToManuscript(doc: ThesisDoc, references: string[]) {
     author_note: doc.affiliation.trim() || "한국외국어대학교 대학원 ○○학과 석사과정",
     chapters,
     references,
+    abstract: doc.abstract?.trim() ?? "",
+    keywords: doc.keywords?.trim() ?? "",
   };
 }
 

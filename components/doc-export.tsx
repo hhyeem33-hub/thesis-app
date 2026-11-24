@@ -41,6 +41,7 @@ export function DocExport({
   onTempSave,
   onSave,
   onTemplatesChange,
+  onExported,
 }: {
   doc: ExportDoc;
   projectId: string;
@@ -52,6 +53,8 @@ export function DocExport({
   onTempSave: () => void;
   onSave: () => void;
   onTemplatesChange: () => void;
+  /** 양식으로 내보냈을 때 (PDF·한글·워드) — 집필 단계 ‘양식 적용’ 표시 */
+  onExported?: () => void;
 }) {
   const [busy, setBusy] = useState<Format | null>(null);
   const [templateId, setTemplateId] = useState("");
@@ -97,8 +100,10 @@ export function DocExport({
           return;
         }
         toast.success("한글(HWPX)을 내려받았어요", { description: r.name });
+        onExported?.();
         return;
       }
+      if (f === "pdf" || f === "docx") onExported?.();
       if (f !== "pdf") toast.success(`${formats.find((x) => x.id === f)!.name} 파일을 내려받았어요`);
     } catch (e) {
       toast.error("만들지 못했어요", { description: e instanceof Error ? e.message : String(e) });
